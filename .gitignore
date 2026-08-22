@@ -1,0 +1,83 @@
+# ============================================================================
+# Python Environments & Bytecode
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.tox/
+.pytest_cache/
+
+# Virtual Environments
+venv/
+env/
+.env/
+.venv/
+env.bak/
+venv.bak/
+
+# ============================================================================
+# Jupyter Notebooks
+# ============================================================================
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# ============================================================================
+# IDEs and Editors
+# ============================================================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm / IntelliJ
+.idea/
+*.iml
+
+# Spyder / JupyterLab
+.spyderproject
+.spyproject
+
+# ============================================================================
+# OS Generated Files
+# ============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ============================================================================
+# Project Specific Exclusions (BSP_project)
+# ============================================================================
+# Escludiamo i file raw del database PhysioNet (molto pesanti e scaricabili via WFDB)
+# Vengono scaricati file con estensione .dat, .hea, .atr, .qrs, .xy
+data/*
+!data/.gitkeep
+
+# Escludiamo eventuali download finiti per sbaglio nella root
+*.dat
+*.hea
+*.atr
+*.qrs
+
+# Escludiamo i risultati (grafici generati, csv pesanti, modelli temporanei)
+# Se vuoi versionare dei report specifici, rimuovi queste righe o forza l'add
+results/*
+!results/.gitkeep
+
+# File temporanei
+*.tmp
+*.temp
+scratch/
+
