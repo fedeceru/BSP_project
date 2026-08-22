@@ -23,6 +23,9 @@ class BaselineWanderRemover:
         nyq = 0.5 * self.fs
         normal_cutoff = self.cutoff_hz / nyq
         
+        if self.num_taps % 2 == 0:
+            self.num_taps += 1
+        
         # Design high-pass FIR filter using the window method
         taps = signal.firwin(self.num_taps, normal_cutoff, pass_zero=False, window=self.window)
         return taps
