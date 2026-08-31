@@ -101,6 +101,8 @@ The `main_analysis.ipynb` notebook includes advanced validation steps:
 - `scipy`
 - `scikit-learn`
 - `matplotlib`
+- `wfdb`
+- `pandas`
 - `jupyter`
 
 ## Usage
