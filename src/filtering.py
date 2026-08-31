@@ -1,6 +1,7 @@
 import numpy as np
+import pandas as pd
 from scipy import signal
-from typing import Union
+from typing import Tuple
 
 class BaselineWanderRemover:
     def __init__(self, num_taps: int = 1000, cutoff_hz: float = 3.0, fs: float = 400.0, window: str = 'hamming'):
@@ -14,9 +15,6 @@ class BaselineWanderRemover:
         self.taps = self._design_filter()
 
     def _design_filter(self) -> np.ndarray:
-        """
-        Design the FIR high-pass filter using the window method.
-        """
         if self.cutoff_hz >= self.fs / 2:
             raise ValueError("Cutoff frequency must be less than Nyquist frequency.")
             
@@ -26,7 +24,6 @@ class BaselineWanderRemover:
         if self.num_taps % 2 == 0:
             self.num_taps += 1
         
-        # Design high-pass FIR filter using the window method
         taps = signal.firwin(self.num_taps, normal_cutoff, pass_zero=False, window=self.window)
         return taps
 
@@ -45,60 +42,139 @@ class BaselineWanderRemover:
         return signal.filtfilt(self.taps, 1.0, data, axis=-1)
 
 
-class PowerLineCanceller:
-    def __init__(self, fs: float = 400.0, f0: float = 50.0, mu: float = 0.01, harmonics: int = 3, qrs_threshold_ratio: float = 2.5):
+class AdaptivePLICanceller:
+    def __init__(self, fs: float = 400.0, f_line: float = 50.0):
         """
-        Adaptive power-line interference canceller with amplitude-based blocking.
+        Adaptive mains interference canceller tracking amplitude, frequency, 
+        and phase with a rolling-window blocking mechanism to protect QRS complexes.
         """
         self.fs = fs
-        self.f0 = f0
-        self.mu = mu
-        self.harmonics = harmonics
-        self.qrs_threshold_ratio = qrs_threshold_ratio
+        self.f_line = f_line
+        self.w_n = 2 * np.pi * f_line / fs
+        
+        tau = 0.13 
+        self.K_a = 1.0 / (fs * tau)
+        
+        zeta = 1.0
+        ratio_wn_wp = 0.04
+        omega_n = self.w_n * ratio_wn_wp
+        
+        self.K_dw = omega_n ** 2
+        self.K_phi = 2 * zeta * omega_n
+        
+        cutoff_hz = 80.0
+        nyq = 0.5 * fs
+        
+        b, a = signal.butter(2, cutoff_hz / nyq, btype='high')
+        
+        w, h = self._freqz_scalar(b, a, f_line, fs)
+        gain_at_50 = np.abs(h)
+        self.b_err = b / gain_at_50
+        self.a_err = a
+
+    @staticmethod
+    def _lfilter_step(b: np.ndarray, a: np.ndarray, x: float, zi: np.ndarray) -> Tuple[float, np.ndarray]:
+        """
+        Performs a single IIR filter step whilst retaining the state zi.
+        """
+        y = b[0] * x + zi[0]
+        for i in range(len(zi) - 1):
+            zi[i] = b[i+1] * x - a[i+1] * y + zi[i+1]
+        zi[-1] = b[-1] * x - a[-1] * y
+        return y, zi
+
+    @staticmethod
+    def _freqz_scalar(b: np.ndarray, a: np.ndarray, f: float, fs: float) -> Tuple[float, complex]:
+        """
+        Calculates the frequency response at a single frequency f.
+        """
+        w = 2 * np.pi * f / fs
+        zm1 = np.exp(-1j * w)
+        num = np.polyval(b, zm1)
+        den = np.polyval(a, zm1)
+        return w, num / den
+        
+    def _apply_comb_filter_and_detect_blocking(self, d_k: np.ndarray) -> np.ndarray:
+        """
+        Uses a comb filter to estimate the signal energy without the mains 
+        interference, deciding when to block the adaptation.
+        """
+        beta = int(round(self.fs / self.f_line))
+        
+        pad = np.zeros(beta)
+        d_shifted = np.concatenate((pad, d_k[:-beta]))
+        d_H = d_k - d_shifted
+        
+        win_len = int(self.fs)
+        d_H_series = pd.Series(d_H)
+        sigma = d_H_series.rolling(window=win_len, center=True).std().fillna(0).values
+        
+        chi = np.sqrt(2) * sigma
+        
+        raw_mask = np.abs(d_H) > chi
+        expansion = int(0.05 * self.fs)
+        blocking_mask = np.convolve(raw_mask.astype(int), np.ones(2 * expansion + 1), mode='same') > 0
+        
+        return blocking_mask
 
     def apply(self, ecg_signal: np.ndarray) -> np.ndarray:
         """
-        Apply the adaptive filter to cancel 50Hz and its harmonics.
-        Uses a blocking mechanism to suspend adaptation during QRS complexes.
+        Executes the adaptive cancellation loop sample-by-sample.
         """
+        if not isinstance(ecg_signal, np.ndarray):
+            raise TypeError("Data must be a numpy array.")
+            
         if ecg_signal.ndim != 1:
-            raise ValueError("PowerLineCanceller currently supports 1D array per call. Please iterate over channels.")
+            raise ValueError("AdaptivePLICanceller currently supports 1D array per call. Please iterate over channels.")
             
-        N = len(ecg_signal)
-        n = np.arange(N)
+        n_samples = len(ecg_signal)
+        e_output = np.zeros(n_samples)
         
-        # Calculate a robust threshold for QRS detection (to block adaptation)
-        std_val = np.std(ecg_signal)
-        mean_val = np.mean(ecg_signal)
-        threshold = mean_val + self.qrs_threshold_ratio * std_val
+        theta_a = 0.0
+        theta_phi = 0.0
+        theta_dw = 0.0
         
-        # Generate reference signals (sine and cosine for 50Hz and harmonics)
-        ref_signals = []
-        for h in range(1, self.harmonics + 1):
-            freq = h * self.f0
-            if freq < self.fs / 2: # Keep below Nyquist
-                ref_signals.append(np.cos(2 * np.pi * freq * n / self.fs))
-                ref_signals.append(np.sin(2 * np.pi * freq * n / self.fs))
+        zi_e = np.zeros(max(len(self.a_err), len(self.b_err)) - 1)
+        zi_y_sin = np.zeros_like(zi_e)
+        zi_y_cos = np.zeros_like(zi_e)
+        
+        blocking_mask = self._apply_comb_filter_and_detect_blocking(ecg_signal)
+        
+        for k in range(n_samples):
+            arg = self.w_n * k + theta_phi
+            ref_sin = np.sin(arg)
+            ref_cos = np.cos(arg)
+            
+            x_hat = theta_a * ref_sin
+            d_val = ecg_signal[k]
+            e_val = d_val - x_hat
+            e_output[k] = e_val
+            
+            e_w, zi_e = self._lfilter_step(self.b_err, self.a_err, e_val, zi_e)
+            
+            y_sin_w, zi_y_sin = self._lfilter_step(self.b_err, self.a_err, ref_sin, zi_y_sin)
+            y_cos_w, zi_y_cos = self._lfilter_step(self.b_err, self.a_err, ref_cos, zi_y_cos)
+            
+            if not blocking_mask[k]:
+                alpha = 1.0 / theta_a if theta_a > 1e-6 else 1.0
                 
-        if not ref_signals:
-            return ecg_signal.copy()
-            
-        ref_signals = np.array(ref_signals)
-        num_refs = ref_signals.shape[0]
-        
-        weights = np.zeros(num_refs)
-        clean_signal = np.zeros(N)
-        
-        # Sequential LMS adaptation (cannot be fully vectorized over time)
-        for i in range(N):
-            x_vec = ref_signals[:, i]
-            interference_est = np.dot(weights, x_vec)
-            error = ecg_signal[i] - interference_est
-            clean_signal[i] = error
-            
-            # Blocking mechanism: if error is too large, we might be in a QRS complex.
-            # Suspend adaptation to protect the QRS complex.
-            if abs(error) < threshold:
-                weights = weights + 2 * self.mu * error * x_vec
+                eta_a = e_w * y_sin_w
+                eta_phi = e_w * (alpha * y_cos_w)
                 
-        return clean_signal
+                theta_a_next = theta_a + self.K_a * eta_a
+                
+                if theta_a_next < 0: 
+                    theta_a_next = 0.0
+                
+                theta_dw_next = theta_dw + self.K_dw * eta_phi
+                
+                max_dw = 2 * np.pi * 4.0 / self.fs
+                theta_dw_next = np.clip(theta_dw_next, -max_dw, max_dw)
+                
+                theta_phi_next = theta_phi + self.K_phi * eta_phi + theta_dw
+                
+                theta_a = theta_a_next
+                theta_dw = theta_dw_next
+                theta_phi = theta_phi_next
+                
+        return e_output

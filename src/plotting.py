@@ -18,23 +18,23 @@ plt.rcParams.update({
 def plot_filter_transfer_function(b, a, fs, title="Baseline Wander Remover (FIR Filter)"):
     w, h = signal.freqz(b, a, worN=8000)
     freq = (w * fs) / (2 * np.pi)
-    
+
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-    
+
     ax1.plot(freq, 20 * np.log10(abs(h) + 1e-10), color='#2c3e50')
     ax1.set_title("Magnitude", fontweight='bold')
     ax1.set_ylabel('Magnitude [dB]')
     ax1.set_xlabel('Frequency [Hz]')
     ax1.set_xlim([0, 50])
     ax1.set_ylim([-40, 10])
-    
+
     angles = np.unwrap(np.angle(h))
     ax2.plot(freq, np.degrees(angles), color='#2c3e50')
     ax2.set_title("Phase", fontweight='bold')
     ax2.set_ylabel('Phase [degrees]')
     ax2.set_xlabel('Frequency [Hz]')
     ax2.set_xlim([0, 50])
-    
+
     plt.suptitle(title, fontweight='bold', fontsize=14, y=1.05)
     plt.tight_layout()
     plt.show()
@@ -91,7 +91,7 @@ def plot_pipeline_stages(t, s1, s3, s5, s6, title="Sequential Analysis Pipeline"
     plt.tight_layout()
     plt.show()
 
-def plot_jade_stages(t, s1, s3, ica_sources, best_fecg_avg, title="JADE Algorithm Pipeline"):
+def plot_ica_stages(t, s1, s3, ica_sources, best_fecg_avg, title="ICA Algorithm Pipeline"):
     fig, axes = plt.subplots(1, 4, figsize=(16, 8), sharey=False)
     fig.suptitle(title, fontweight='bold', fontsize=14)
     
@@ -122,19 +122,19 @@ def plot_jade_stages(t, s1, s3, ica_sources, best_fecg_avg, title="JADE Algorith
     plt.tight_layout()
     plt.show()
 
-def plot_fhr_traces(t_sa, fhr_sa, t_jade, fhr_jade):
+def plot_fhr_traces(t_sa, fhr_sa, t_ica, fhr_ica):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True, sharey=True)
     
     ax1.plot(t_sa, fhr_sa, marker='.', color='black', linestyle='None', markersize=4)
     ax1.set_title("FHR Trace - Sequential Analysis", fontweight='bold')
     ax1.set_ylabel("FHR [bpm]")
     
-    ax2.plot(t_jade, fhr_jade, marker='.', color='#2c3e50', linestyle='None', markersize=4)
-    ax2.set_title("FHR Trace - JADE (ICA)", fontweight='bold')
+    ax2.plot(t_ica, fhr_ica, marker='.', color='#2c3e50', linestyle='None', markersize=4)
+    ax2.set_title("FHR Trace - ICA", fontweight='bold')
     ax2.set_ylabel("FHR [bpm]")
     ax2.set_xlabel("Time [s]")
     
-    ax1.set_ylim([120, 180])
+    ax1.set_ylim([50, 200])
     ax1.set_xlim([0, 60])
     
     plt.tight_layout()
@@ -151,13 +151,13 @@ def plot_reliability_correlations(df_results):
     axes[0, 1].set_ylabel("SA reliability [%]")
     axes[0, 1].set_xlim([-35, -15])
     
-    axes[1, 0].plot(df_results['SNR'], df_results['Rel_JADE'], marker='x', color='black', linestyle='None')
+    axes[1, 0].plot(df_results['SNR'], df_results['Rel_ICA'], marker='x', color='black', linestyle='None')
     axes[1, 0].set_xlabel("SNR [dB]")
-    axes[1, 0].set_ylabel("JADE reliability [%]")
+    axes[1, 0].set_ylabel("ICA reliability [%]")
     
-    axes[1, 1].plot(df_results['SIR'], df_results['Rel_JADE'], marker='x', color='black', linestyle='None')
+    axes[1, 1].plot(df_results['SIR'], df_results['Rel_ICA'], marker='x', color='black', linestyle='None')
     axes[1, 1].set_xlabel("SIR [dB]")
-    axes[1, 1].set_ylabel("JADE reliability [%]")
+    axes[1, 1].set_ylabel("ICA reliability [%]")
     
     for ax in axes.flat:
         ax.set_ylim([-5, 105])
