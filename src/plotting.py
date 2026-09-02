@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
+from scipy.signal import welch
 
 plt.rcParams.update({
     'axes.facecolor': '#f8f9fa',
@@ -37,6 +38,70 @@ def plot_filter_transfer_function(b, a, fs, title="Baseline Wander Remover (FIR 
 
     plt.suptitle(title, fontweight='bold', fontsize=14, y=1.05)
     plt.tight_layout()
+    plt.show()
+
+def plot_before_after(t, before, after, title="Before / After", before_label="Before", after_label="After"):
+    n_channels = min(5, before.shape[1])
+    offset_step = np.max(np.abs(before)) * 2.5
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 6), sharey=True)
+
+    for ch in range(n_channels):
+        ax1.plot(t, before[:, ch] + (n_channels - ch) * offset_step, color='#333333', lw=0.8)
+        ax2.plot(t, after[:, ch] + (n_channels - ch) * offset_step, color='#2c3e50', lw=0.8)
+
+    ax1.set_title(before_label, fontweight='bold')
+    ax2.set_title(after_label, fontweight='bold')
+    ax1.set_xlabel('Time [s]')
+    ax2.set_xlabel('Time [s]')
+    ax1.set_yticks([])
+
+    fig.suptitle(title, fontweight='bold', fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+def plot_before_after_comprehensive(t, before, after, fs, title="Pipeline Evaluation: BWR + PLI Cancellation", 
+                                    before_color='purple', after_color='green'):
+    n_channels = min(4, before.shape[1]) # Limitiamo a 4 per chiarezza
+    step = np.max(np.abs(before)) * 2.5
+    group_step = step * 2.3
+
+    fig = plt.figure(figsize=(14, 2.0 * n_channels), layout='constrained')
+    
+    # Griglia: 70% spazio per il tempo, 30% per la frequenza
+    gs = fig.add_gridspec(1, 2, width_ratios=[2.5, 1], wspace=0.15)
+    
+    ax_time = fig.add_subplot(gs[0])
+    ax_freq = fig.add_subplot(gs[1])
+
+    for ch in range(n_channels):
+        base = (n_channels - 1 - ch) * group_step
+        
+        ax_time.plot(t, before[:, ch] + base + step, color=before_color, lw=0.9, 
+                     label="S1 (Raw)" if ch == 0 else None)
+        ax_time.plot(t, after[:, ch] + base, color=after_color, lw=0.9, 
+                     label="S3 (Filtered)" if ch == 0 else None)
+        
+        f_before, psd_before = welch(before[:, ch], fs, nperseg=1024)
+        f_after, psd_after = welch(after[:, ch], fs, nperseg=1024)
+        
+        freq_base = (n_channels - 1 - ch) * 50  # Offset arbitrario per la visualizzazione
+        ax_freq.plot(f_before, 10*np.log10(psd_before) + freq_base, color=before_color, lw=0.8)
+        ax_freq.plot(f_after, 10*np.log10(psd_after) + freq_base, color=after_color, lw=0.8)
+
+    # Formattazione asse Tempo
+    ax_time.set_yticks([])
+    ax_time.set_xlabel('Time [s]')
+    ax_time.legend(loc='upper right')
+    ax_time.set_title("Time Domain", fontweight='bold')
+
+    # Formattazione asse Frequenza
+    ax_freq.set_yticks([])
+    ax_freq.set_xlabel('Frequency [Hz]')
+    ax_freq.set_xlim(0, 100) # Limitiamo a 100Hz per vedere bene i 50/60Hz
+    ax_freq.set_title("Power Spectral Density", fontweight='bold')
+
+    fig.suptitle(title, fontweight='bold', fontsize=16)
     plt.show()
 
 def plot_qrs_detection(t, channels_matrix, enhanced_signal, peaks, title="QRS Detection"):
