@@ -62,13 +62,13 @@ def plot_before_after(t, before, after, title="Before / After", before_label="Be
 
 def plot_before_after_comprehensive(t, before, after, fs, title="Pipeline Evaluation: BWR + PLI Cancellation", 
                                     before_color='purple', after_color='green'):
-    n_channels = min(4, before.shape[1]) # Limitiamo a 4 per chiarezza
+    n_channels = min(4, before.shape[1]) # Limit to 4 channels for clarity
     step = np.max(np.abs(before)) * 2.5
     group_step = step * 2.3
 
     fig = plt.figure(figsize=(14, 2.0 * n_channels), layout='constrained')
     
-    # Griglia: 70% spazio per il tempo, 30% per la frequenza
+    # Grid: 70% of the space for time, 30% for frequency
     gs = fig.add_gridspec(1, 2, width_ratios=[2.5, 1], wspace=0.15)
     
     ax_time = fig.add_subplot(gs[0])
@@ -85,20 +85,20 @@ def plot_before_after_comprehensive(t, before, after, fs, title="Pipeline Evalua
         f_before, psd_before = welch(before[:, ch], fs, nperseg=1024)
         f_after, psd_after = welch(after[:, ch], fs, nperseg=1024)
         
-        freq_base = (n_channels - 1 - ch) * 50  # Offset arbitrario per la visualizzazione
+        freq_base = (n_channels - 1 - ch) * 50  # Arbitrary offset for visualisation
         ax_freq.plot(f_before, 10*np.log10(psd_before) + freq_base, color=before_color, lw=0.8)
         ax_freq.plot(f_after, 10*np.log10(psd_after) + freq_base, color=after_color, lw=0.8)
 
-    # Formattazione asse Tempo
+    # Time axis formatting
     ax_time.set_yticks([])
     ax_time.set_xlabel('Time [s]')
     ax_time.legend(loc='upper right')
     ax_time.set_title("Time Domain", fontweight='bold')
 
-    # Formattazione asse Frequenza
+    # Frequency axis formatting
     ax_freq.set_yticks([])
     ax_freq.set_xlabel('Frequency [Hz]')
-    ax_freq.set_xlim(0, 100) # Limitiamo a 100Hz per vedere bene i 50/60Hz
+    ax_freq.set_xlim(0, 100) # Limit to 100Hz to clearly see the 50/60Hz components
     ax_freq.set_title("Power Spectral Density", fontweight='bold')
 
     fig.suptitle(title, fontweight='bold', fontsize=16)

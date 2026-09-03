@@ -4,9 +4,21 @@ from scipy import signal
 from typing import Tuple
 
 class BaselineWanderRemover:
+    """
+    Baseline Wander Remover class.
+    Implements a zero-phase high-pass FIR filter designed with the window method
+    to eliminate low-frequency baseline wander from ECG signals without introducing
+    phase distortion.
+    """
     def __init__(self, num_taps: int = 1000, cutoff_hz: float = 3.0, fs: float = 400.0, window: str = 'hamming'):
         """
-        Baseline Wander Remover using FIR high-pass filter designed with Window method.
+        Constructor for BaselineWanderRemover.
+
+        Args:
+            num_taps (int): Number of filter coefficients. Defaults to 1000.
+            cutoff_hz (float): Cutoff frequency of the high-pass filter in Hz. Defaults to 3.0.
+            fs (float): Sampling frequency of the signal in Hz. Defaults to 400.0.
+            window (str): Window function to use for FIR filter design. Defaults to 'hamming'.
         """
         self.num_taps = num_taps
         self.cutoff_hz = cutoff_hz
@@ -15,25 +27,48 @@ class BaselineWanderRemover:
         self.taps = self._design_filter()
 
     def _design_filter(self) -> np.ndarray:
+        """
+        Designs a high-pass FIR filter using the window method.
+
+        Returns:
+            np.ndarray: The filter coefficients (FIR filter taps).
+            
+        Raises:
+            ValueError: If the cutoff frequency exceeds the Nyquist limit.
+        """
         if self.cutoff_hz >= self.fs / 2:
             raise ValueError("Cutoff frequency must be less than Nyquist frequency.")
 
-        # Derive the normalized cutoff frequency for the FIR filter design            
+        # Derive the normalised cutoff frequency for the FIR filter design
         nyq = 0.5 * self.fs 
         normal_cutoff = self.cutoff_hz / nyq
 
-        # Ensure the number of taps is odd for a Type I FIR filter to have a zero phase response. 
-        # Type I filter allows for a non-zero amplitude at the Nyquist frequency (fs/2), making it possible to create high-pass filters. 
+        # Ensure the number of taps is odd for a Type I FIR filter to have a zero phase response, 
+        # so that the filter does not introduce phase distortion to the ECG signal. 
+        # Type I filter allows for a non-zero amplitude at the Nyquist frequency (fs/2), 
+        # making QRS complexes more accurately preserved. 
         if self.num_taps % 2 == 0:
             self.num_taps += 1
 
+        # Hamming function is used to reduce the Gibbs phenomenon, which can cause ripples 
+        # in the frequency response of the filter.
         taps = signal.firwin(self.num_taps, normal_cutoff, pass_zero=False, window=self.window)
         return taps
 
     def apply(self, data: np.ndarray) -> np.ndarray:
         """
-        Apply zero-phase filtering to the data to prevent phase distortion.
+        Applies zero-phase filtering to the data to prevent phase distortion.
         Assumes data is a 1D numpy array or 2D array (channels x samples).
+
+        Args:
+            data (np.ndarray): The raw ECG signal array.
+
+        Returns:
+            np.ndarray: The baseline wander removed signal.
+            
+        Raises:
+            TypeError: If input data is not a numpy array.
+            ValueError: If input data is empty.
         """
         if not isinstance(data, np.ndarray):
             raise TypeError("Data must be a numpy array.")
@@ -42,41 +77,71 @@ class BaselineWanderRemover:
             raise ValueError("Data cannot be empty.")
             
         # filtfilt applies a linear digital filter twice, once forward and once backwards.
-        # The combined filter has zero phase and a filter order twice that of the original.
+        # By doing so we go from a linear-phase filter to a zero-phase filter.
         return signal.filtfilt(self.taps, 1.0, data, axis=-1)
 
 
 class AdaptivePLICanceller:
+    """
+    Adaptive Power Line Interference (PLI) Canceller class.
+    Removes power-line interference (e.g., 50 Hz mains noise) from ECG signals 
+    using a Phase-Locked Loop (PLL) and error-isolation mechanisms.
+    """
     def __init__(self, fs: float = 400.0, f_line: float = 50.0):
         """
-        Adaptive mains interference canceller tracking amplitude, frequency, 
-        and phase with a rolling-window blocking mechanism to protect QRS complexes.
+        Constructor for AdaptivePLICanceller.
+        
+        Configures the Phase-Locked Loop (PLL) and error-isolation mechanisms 
+        through three core components:
+        
+        1. Amplitude Tracking: Sets the adaptation gain (K_a) using a 0.13s time constant 
+           to smoothly track fluctuations in the interference volume.
+        2. Frequency/Phase Tracking (PLL): Configures a critically damped (zeta = 1.0) 
+           control loop. The gains (K_dw, K_phi) are tuned to strictly track slow, 
+           natural drifts in the mains frequency without oscillating.
+        3. Error Isolation Filter: Designs an internal 2nd-order 80 Hz IIR high-pass filter. 
+           The coefficients (b_err, a_err) are mathematically normalised to guarantee exactly 
+           unity gain (1.0) at the nominal mains frequency (f_line). This acts as a visor, 
+           hiding low-frequency cardiac components from the learning algorithm to ensure 
+           stable gradient calculations.
+
+        Args:
+            fs (float): Sampling frequency of the signal in Hz. Defaults to 400.0.
+            f_line (float): Nominal power-line frequency in Hz. Defaults to 50.0.
         """
         self.fs = fs
         self.f_line = f_line 
-        self.w_n = 2 * np.pi * f_line / fs # Natural frequency of the mains interference in radians/sample
+        # Natural frequency of the mains interference in radians/sample
+        self.w_n = 2 * np.pi * f_line / fs 
         
-        tau = 0.13 # Time constant for amplitude adaptation
-        self.K_a = 1.0 / (fs * tau) # Adaptation gain for amplitude
+        # Time constant for amplitude adaptation
+        tau = 0.13 
+        # Adaptation gain for amplitude
+        self.K_a = 1.0 / (fs * tau) 
 
         # PLL parameters for frequency and phase adaptation
-        zeta = 1.0 # Goldilocks damping ratio for the PLL, without oscillations or sluggishness
-        ratio_wn_wp = 0.04 # consider only slow frequency variations in the mains frequency
+        # Goldilocks damping ratio for the PLL, without oscillations or sluggishness
+        zeta = 1.0 
+        # Consider only slow frequency variations in the mains frequency
+        ratio_wn_wp = 0.04 
         omega_n = self.w_n * ratio_wn_wp  
 
         # Adaptation gains for frequency and phase
         self.K_dw = omega_n ** 2 
         self.K_phi = 2 * zeta * omega_n 
 
-        # Design a IIR high-pass filter of 2nd order to remove baseline wander and low-frequency noise
+        # Design a 2nd order IIR high-pass filter to remove baseline wander and low-frequency noise
         cutoff_hz = 80.0
         nyq = 0.5 * fs 
         b, a = signal.butter(2, cutoff_hz / nyq, btype='high')
 
-        w, h = self._freqz_scalar(b, a, f_line, fs) # it return a complex number
-        gain_at_50 = np.abs(h) # ignoring the phase response, we only need the magnitude response at 50 Hz 
+        # Complex number representing frequency response at f_line
+        w, h = self._freqz_scalar(b, a, f_line, fs) 
+        # Ignoring the phase response, we only need the magnitude response at 50 Hz
+        gain_at_50 = np.abs(h)  
 
-        # Normalize the filter coefficients to ensure unity gain at 50 Hz, keeping cutoff frequency intact at 80 Hz
+        # Normalise the filter coefficients to ensure unity gain at 50 Hz,
+        # keeping cutoff frequency intact at 80 Hz
         self.b_err = b / gain_at_50
         self.a_err = a
 
@@ -85,9 +150,16 @@ class AdaptivePLICanceller:
         """
         Performs a single IIR filter step whilst retaining the state zi.
 
+        Args:
+            b (np.ndarray): Numerator coefficients of the filter.
+            a (np.ndarray): Denominator coefficients of the filter.
+            x (float): Current input sample.
+            zi (np.ndarray): Current state of the filter.
+
         Returns:
-            y: The filtered output for the current input sample.
-            zi: The updated filter state for the next input sample.
+            Tuple[float, np.ndarray]: 
+                - y: The filtered output for the current input sample.
+                - zi: The updated filter state for the next input sample.
         """
         y = b[0] * x + zi[0]
         for i in range(len(zi) - 1):
@@ -99,30 +171,44 @@ class AdaptivePLICanceller:
     def _freqz_scalar(b: np.ndarray, a: np.ndarray, f: float, fs: float) -> Tuple[float, complex]:
         """
         Calculates the frequency response at a single frequency f.
-        Simulates the behavior of scipy.signal.freqz but for a single frequency point, without having to compute the full frequency response.
+        Simulates the behaviour of scipy.signal.freqz but for a single frequency point,
+        without having to compute the full frequency response array.
+
+        Args:
+            b (np.ndarray): Numerator coefficients.
+            a (np.ndarray): Denominator coefficients.
+            f (float): Frequency point of interest in Hz.
+            fs (float): Sampling frequency in Hz.
 
         Returns:
-            w: The normalized frequency in radians/sample.
-            h: The complex frequency response at the specified frequency.
+            Tuple[float, complex]:
+                - w: The normalised frequency in radians/sample.
+                - h: The complex frequency response at the specified frequency.
         """
         w = 2 * np.pi * f / fs # Convert frequency to radians/sample
-        zm1 = np.exp(-1j * w) # Compute z^-1 for the given frequency (50 Hz)
-        # Apply the filter coefficients to compute the frequency response at that frequency
+        zm1 = np.exp(-1j * w)  # Compute z^-1 for the given frequency
+        # Apply the filter coefficients to compute the frequency response
         num = np.polyval(b, zm1) # Evaluate the numerator polynomial at z^-1 
         den = np.polyval(a, zm1) # Evaluate the denominator polynomial at z^-1
         return w, num / den 
         
     def _apply_comb_filter_and_detect_blocking(self, d_k: np.ndarray) -> np.ndarray:
         """
-        Uses a comb filter to estimate the signal energy without the mains   
-        interference, deciding when to block the adaptation.
-        It obtains that by calculating the difference between the current sample and the sample one period ago (1/f_line seconds).
-        Then, it computes the rolling standard deviation of this difference signal to estimate the noise level.
-        A threshold is set at sqrt(2) times the rolling standard deviation, and if the absolute value of the difference signal exceeds this threshold, 
-        it indicates a potential QRS complex or other significant event, and adaptation is blocked for a short period around that sample.
+        Uses a comb filter to estimate the signal energy without the mains interference, 
+        deciding when to block the adaptation.
         
+        Calculates the difference between the current sample and the sample one period 
+        ago (1/f_line seconds). It computes the rolling standard deviation of this difference 
+        signal to estimate the noise level. A threshold is set at sqrt(2) times the rolling 
+        standard deviation. If the absolute value of the difference signal exceeds this threshold, 
+        it indicates a potential QRS complex (or significant event), blocking adaptation for a 
+        short period around that sample.
+        
+        Args:
+            d_k (np.ndarray): The raw ECG signal array.
+
         Returns:
-            blocking_mask: A boolean array indicating where adaptation should be blocked.
+            np.ndarray: A boolean mask array indicating where adaptation should be blocked.
         """
         beta = int(round(self.fs / self.f_line))
         
@@ -132,10 +218,10 @@ class AdaptivePLICanceller:
         
         win_len = int(self.fs)
         d_H_series = pd.Series(d_H)
-        # Compute the rolling standard deviation of the difference signal to estimate the noise level
+        # Compute the rolling standard deviation to estimate the noise level
         sigma = d_H_series.rolling(window=win_len, center=True).std().fillna(0).values
         
-        # Set the threshold for blocking adaptation based on the estimated noise level
+        # Set the threshold for blocking adaptation
         chi = np.sqrt(2) * sigma
         
         raw_mask = np.abs(d_H) > chi
@@ -147,15 +233,24 @@ class AdaptivePLICanceller:
     def apply(self, ecg_signal: np.ndarray) -> np.ndarray:
         """
         Executes the adaptive cancellation loop sample-by-sample.
-        1) It computes the reference signals (sine and cosine) based on the current phase estimate.
-        2) It calculates the error signal by subtracting the estimated interference from the actual ECG signal.
-        3) It applies the high-pass filter to both the error and reference signals to remove low-frequency noise and baseline wander.
-        4) It updates the adaptive parameters (amplitude, frequency, and phase) based on the filtered signals, but only if the current sample is not 
-        within a blocking region (i.e., not part of a QRS complex or other significant event).
-        5) It ensures that the amplitude remains non-negative and that the frequency adaptation is constrained within a reasonable range to prevent instability.
+
+        Algorithm steps:
+        1. Computes the reference signals (sine and cosine) based on the current phase estimate.
+        2. Calculates the error signal by subtracting the estimated interference from the actual signal.
+        3. Applies the high-pass filter to both the error and reference signals to remove low-frequency artifacts.
+        4. Updates the adaptive parameters (amplitude, frequency, phase) based on the filtered signals, 
+           only if the current sample is outside a blocking region (e.g., QRS complex).
+        5. Constrains amplitude to remain non-negative and caps frequency drift to prevent instability.
         
+        Args:
+            ecg_signal (np.ndarray): 1D array representing a single ECG channel.
+
         Returns:
-            e_output: The error signal after adaptive cancellation, which should have reduced mains interference.
+            np.ndarray: The error signal acting as the clean output, with reduced mains interference.
+            
+        Raises:
+            TypeError: If input data is not a numpy array.
+            ValueError: If input array is not 1-dimensional.
         """
         if not isinstance(ecg_signal, np.ndarray):
             raise TypeError("Data must be a numpy array.")
@@ -166,12 +261,12 @@ class AdaptivePLICanceller:
         n_samples = len(ecg_signal)
         e_output = np.zeros(n_samples)
         
-        # Initialize adaptive parameters
+        # Initialise adaptive parameters
         theta_a = 0.0 # AMPLITUDE
         theta_phi = 0.0 # PHASE
         theta_dw = 0.0 # FREQUENCY
         
-        # Initialize filter states for the error and reference signals
+        # Initialise filter states for the error and reference signals
         zi_e = np.zeros(max(len(self.a_err), len(self.b_err)) - 1)
         zi_y_sin = np.zeros_like(zi_e) 
         zi_y_cos = np.zeros_like(zi_e) 
@@ -179,11 +274,13 @@ class AdaptivePLICanceller:
         blocking_mask = self._apply_comb_filter_and_detect_blocking(ecg_signal)
         
         for k in range(n_samples):
-            arg = self.w_n * k + theta_phi # Compute the argument for the sine and cosine functions based on the current sample index and phase estimate
+            # Compute argument for sine and cosine based on sample index and phase estimate
+            arg = self.w_n * k + theta_phi 
             ref_sin = np.sin(arg)
             ref_cos = np.cos(arg)
             
-            x_hat = theta_a * ref_sin # Compute the estimated interference based on the current amplitude and reference sine signal
+            # Estimated interference based on current amplitude
+            x_hat = theta_a * ref_sin 
             d_val = ecg_signal[k]
             e_val = d_val - x_hat 
             e_output[k] = e_val
@@ -196,9 +293,9 @@ class AdaptivePLICanceller:
             if not blocking_mask[k]:
                 alpha = 1.0 / theta_a if theta_a > 1e-6 else 1.0
 
-                # Derivative of the error with respect to the adaptive parameters
-                # If e_w it's similar to the sine, it means the amplitude is too low, so we need to increase it.
-                # If e_w is similar to the cosine, it means the phase is off, so we need to adjust it.
+                # Derivative of the error with respect to the adaptive parameters:
+                # - If e_w is correlated with the sine, amplitude is too low/high.
+                # - If e_w is correlated with the cosine, the phase needs adjustment.
                 eta_a = e_w * y_sin_w 
                 eta_phi = e_w * (alpha * y_cos_w)
 
