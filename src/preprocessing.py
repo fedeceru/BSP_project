@@ -26,6 +26,6 @@ class SignalResampler:
         up = int(self.target_fs)
         down = int(self.original_fs)
         
-        # resample_poly operates along axis=-1 by default, automatically vectorizing across channels
+        # resample_poly operates along axis=-1 by default, automatically vectorising across channels
         resampled_data = signal.resample_poly(data, up, down, axis=-1)
         return resampled_data

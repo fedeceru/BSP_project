@@ -62,7 +62,7 @@ Raw Abdominal Signal (400 Hz)
 - **Channel Combination:** Principal Component Analysis (PCA) extracts the dominant maternal cardiac axis.
 - **QRS Detection:** Employs a **Matched Filter (Cross-correlation)** to detect R-peaks, explicitly avoiding Hilbert Transform envelopes.
 - **Robust Template Generation:** Calculates a moving average of the last 10 maternal beats, implementing a trimming technique (discarding maximum and minimum amplitude beats) to reject outliers and prevent fetal QRS contamination.
-- **Subtraction:** Segments the template into P, QRS, and T waves, fitting them to the raw signal using **Standard Least Squares** (Moore-Penrose pseudo-inverse). No Ridge Regression or regularization is used, strictly adhering to standard OLS.
+- **Subtraction:** Segments the template into P, QRS, and T waves, fitting them to the raw signal using **Standard Least Squares** (Moore-Penrose pseudo-inverse). No Ridge Regression or regularisation is used, strictly adhering to standard OLS.
 
 ### 5. Fetal ECG Extractor
 
@@ -109,7 +109,7 @@ The `main_analysis.ipynb` notebook includes advanced validation steps:
 
 1. Place your raw `.dat` and `.hea` files from the [PhysioNet Non-Invasive Fetal ECG Database](https://physionet.org/content/nifecgdb/) into the `data/` directory.
 2. Open `notebooks/main_analysis.ipynb`.
-3. Run the pipeline cells sequentially to process the signals, extract the fECG, and visualize the results.
+3. Run the pipeline cells sequentially to process the signals, extract the fECG, and visualise the results.
 
 ## References
 

@@ -60,23 +60,23 @@ $RECYCLE.BIN/
 # ============================================================================
 # Project Specific Exclusions (BSP_project)
 # ============================================================================
-# Escludiamo i file raw del database PhysioNet (molto pesanti e scaricabili via WFDB)
-# Vengono scaricati file con estensione .dat, .hea, .atr, .qrs, .xy
+# Exclude the raw PhysioNet database files (very large and downloadable via WFDB)
+# Files downloaded have the extensions .dat, .hea, .atr, .qrs, .xy
 data/*
 !data/.gitkeep
 
-# Escludiamo eventuali download finiti per sbaglio nella root
+# Exclude any downloads that accidentally ended up in the root
 *.dat
 *.hea
 *.atr
 *.qrs
 
-# Escludiamo i risultati (grafici generati, csv pesanti, modelli temporanei)
-# Se vuoi versionare dei report specifici, rimuovi queste righe o forza l'add
+# Exclude results (generated plots, heavy csv files, temporary models)
+# If you want to version specific reports, remove these lines or force the add
 results/*
 !results/.gitkeep
 
-# File temporanei
+# Temporary files
 *.tmp
 *.temp
 scratch/
