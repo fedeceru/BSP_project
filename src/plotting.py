@@ -316,7 +316,7 @@ def plot_performance_summary(df_results, success_rate_sa, success_rate_ica):
     ax2.set_ylim([0, 1.05])
     ax2.set_title('Reliability', fontweight='bold')
 
-    fig.suptitle('FHR Detection Performance (Section 2.4.1)', fontweight='bold', fontsize=14)
+    fig.suptitle('FHR Detection Performance', fontweight='bold', fontsize=14)
     plt.tight_layout()
     plt.show()
 
@@ -372,6 +372,6 @@ def plot_snr_sir_vs_reliability(df_fig10, jade_snr_threshold_db=-10.0, jade_sir_
     for ax in axes.flat:
         ax.set_ylim([-0.05, 1.05])
 
-    fig.suptitle('FHR Detection Reliability vs SNR/SIR (Section 2.4.2, Figure 10)', fontweight='bold', fontsize=14)
+    fig.suptitle('FHR Detection Reliability vs SNR/SIR', fontweight='bold', fontsize=14)
     plt.tight_layout()
     plt.show()

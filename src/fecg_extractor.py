@@ -7,7 +7,7 @@ class FECGExtractor:
     Fetal ECG (FECG) Extractor class.
     Implements the sequential analysis method for detecting fetal QRS complexes
     and extracting the FECG using multi-channel QRS enhancement (PCA) and
-    synchronous averaging, as described in the reference paper.
+    synchronous averaging.
     """
 
     def __init__(self, fs: float = 2000.0):

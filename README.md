@@ -60,7 +60,7 @@ Raw Abdominal Signal (400 Hz)
 
 **Implementation:**
 - **Channel Combination:** Principal Component Analysis (PCA) extracts the dominant maternal cardiac axis.
-- **QRS Detection:** Employs a **Matched Filter (Cross-correlation)** to detect R-peaks, explicitly avoiding Hilbert Transform envelopes.
+- **QRS Detection:** Employs a **Matched Filter (Cross-correlation)** to detect R-peaks.
 - **Robust Template Generation:** Calculates a moving average of the last 10 maternal beats, implementing a trimming technique (discarding maximum and minimum amplitude beats) to reject outliers and prevent fetal QRS contamination.
 - **Subtraction:** Segments the template into P, QRS, and T waves, fitting them to the raw signal using **Standard Least Squares** (Moore-Penrose pseudo-inverse). No Ridge Regression or regularisation is used, strictly adhering to standard OLS.
 
@@ -76,25 +76,25 @@ Raw Abdominal Signal (400 Hz)
 
 ```
 BSP_project/
-├── data/           # Raw PhysioNet datasets (e.g., NIFECGDB)
-├── docs/           # Reference papers and documentation
-├── notebooks/      # Jupyter notebooks for interactive analysis
-│   └── main_analysis.ipynb # Pipeline execution and validation
-├── results/        # Saved figures, PSDs, and extracted metrics
-└── src/            # Core Python modules
-    ├── filtering.py       # FIR baseline and adaptive 50Hz filters
-    ├── preprocessing.py   # Upsampling routines
-    ├── mecg_canceller.py  # Maternal ECG detection and least squares subtraction
-    ├── fecg_extractor.py  # Fetal QRS detection and synchronous averaging
-    ├── utils.py           # FHR/reliability/success-rate metrics and ground-truth validation
-    └── plotting.py        # Shared matplotlib visualisations for the notebook
+├── data/                       # Raw PhysioNet datasets (e.g., NIFECGDB)
+├── docs/                       # Reference papers and documentation
+├── notebooks/                  # Jupyter notebooks for interactive analysis
+│   └── main_analysis.ipynb     # Pipeline execution and validation
+├── results/                    # Saved figures, PSDs, and extracted metrics
+└── src/                        # Core Python modules
+    ├── filtering.py            # FIR baseline and adaptive 50Hz filters
+    ├── preprocessing.py        # Upsampling routines
+    ├── mecg_canceller.py       # Maternal ECG detection and least squares subtraction
+    ├── fecg_extractor.py       # Fetal QRS detection and synchronous averaging
+    ├── utils.py                # FHR/reliability/success-rate metrics and ground-truth validation
+    └── plotting.py             # Shared matplotlib visualisations for the notebook
 ```
 
 ## Validation & Evaluation
 
 The `main_analysis.ipynb` notebook includes advanced validation steps:
 - **Welch's Periodogram:** Compares the Power Spectral Density (PSD) before and after filtering.
-- **ICA Benchmarking:** Uses `FastICA` (from `scikit-learn`) as a baseline BSS method to demonstrate the superior robustness of our sequential approach in noisy environments, as claimed by the reference paper.
+- **ICA Benchmarking:** Uses `FastICA` (from `scikit-learn`) as a baseline BSS method to demonstrate the superior robustness the sequential approach in noisy environments.
 - **Signal Quality:** Implements Sample Entropy (SampEn) to quantitatively evaluate the complexity and quality of the extracted fECG.
 
 ## Dependencies
