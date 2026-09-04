@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
 from scipy.signal import welch
+from matplotlib.transforms import offset_copy
 
 plt.rcParams.update({
     'axes.facecolor': '#f8f9fa',
@@ -60,72 +61,118 @@ def plot_before_after(t, before, after, title="Before / After", before_label="Be
     plt.tight_layout()
     plt.show()
 
-def plot_before_after_comprehensive(t, before, after, fs, title="Pipeline Evaluation: BWR + PLI Cancellation", 
-                                    before_color='purple', after_color='green'):
+def plot_before_after_comprehensive(t, before, after, fs, title="Pipeline Evaluation: BWR + PLI Cancellation",
+                                    before_color='purple', after_color='green',
+                                    before_label="S1 (Raw)", after_label="S3 (Filtered)",
+                                    show_psd=True):
     n_channels = min(4, before.shape[1]) # Limit to 4 channels for clarity
     step = np.max(np.abs(before)) * 2.5
     group_step = step * 2.3
 
-    fig = plt.figure(figsize=(14, 2.0 * n_channels), layout='constrained')
-    
-    # Grid: 70% of the space for time, 30% for frequency
-    gs = fig.add_gridspec(1, 2, width_ratios=[2.5, 1], wspace=0.15)
-    
-    ax_time = fig.add_subplot(gs[0])
-    ax_freq = fig.add_subplot(gs[1])
+    if show_psd:
+        fig = plt.figure(figsize=(14, 2.0 * n_channels), layout='constrained')
+        # Grid: 70% of the space for time, 30% for frequency
+        gs = fig.add_gridspec(1, 2, width_ratios=[2.5, 1], wspace=0.15)
+        ax_time = fig.add_subplot(gs[0])
+        ax_freq = fig.add_subplot(gs[1])
+    else:
+        fig, ax_time = plt.subplots(figsize=(10, 2.0 * n_channels), layout='constrained')
+        ax_freq = None
 
     for ch in range(n_channels):
         base = (n_channels - 1 - ch) * group_step
-        
-        ax_time.plot(t, before[:, ch] + base + step, color=before_color, lw=0.9, 
-                     label="S1 (Raw)" if ch == 0 else None)
-        ax_time.plot(t, after[:, ch] + base, color=after_color, lw=0.9, 
-                     label="S3 (Filtered)" if ch == 0 else None)
-        
-        f_before, psd_before = welch(before[:, ch], fs, nperseg=1024)
-        f_after, psd_after = welch(after[:, ch], fs, nperseg=1024)
-        
-        freq_base = (n_channels - 1 - ch) * 50  # Arbitrary offset for visualisation
-        ax_freq.plot(f_before, 10*np.log10(psd_before) + freq_base, color=before_color, lw=0.8)
-        ax_freq.plot(f_after, 10*np.log10(psd_after) + freq_base, color=after_color, lw=0.8)
+
+        ax_time.plot(t, before[:, ch] + base + step, color=before_color, lw=0.9,
+                     label=before_label if ch == 0 else None)
+        ax_time.plot(t, after[:, ch] + base, color=after_color, lw=0.9,
+                     label=after_label if ch == 0 else None)
+
+        if show_psd:
+            f_before, psd_before = welch(before[:, ch], fs, nperseg=1024)
+            f_after, psd_after = welch(after[:, ch], fs, nperseg=1024)
+
+            freq_base = (n_channels - 1 - ch) * 50  # Arbitrary offset for visualisation
+            ax_freq.plot(f_before, 10*np.log10(psd_before) + freq_base, color=before_color, lw=0.8)
+            ax_freq.plot(f_after, 10*np.log10(psd_after) + freq_base, color=after_color, lw=0.8)
 
     # Time axis formatting
     ax_time.set_yticks([])
     ax_time.set_xlabel('Time [s]')
     ax_time.legend(loc='upper right')
-    ax_time.set_title("Time Domain", fontweight='bold')
+    if show_psd:
+        ax_time.set_title("Time Domain", fontweight='bold')
 
-    # Frequency axis formatting
-    ax_freq.set_yticks([])
-    ax_freq.set_xlabel('Frequency [Hz]')
-    ax_freq.set_xlim(0, 100) # Limit to 100Hz to clearly see the 50/60Hz components
-    ax_freq.set_title("Power Spectral Density", fontweight='bold')
+        # Frequency axis formatting
+        ax_freq.set_yticks([])
+        ax_freq.set_xlabel('Frequency [Hz]')
+        ax_freq.set_xlim(0, 100) # Limit to 100Hz to clearly see the 50/60Hz components
+        ax_freq.set_title("Power Spectral Density", fontweight='bold')
 
     fig.suptitle(title, fontweight='bold', fontsize=16)
     plt.show()
 
-def plot_qrs_detection(t, channels_matrix, enhanced_signal, peaks, title="QRS Detection"):
-    fig, ax = plt.subplots(figsize=(8, 8))
-    
+def _draw_qrs_detection_panel(ax, fig, t, channels_matrix, enhanced_signal, peaks, title, equalize_channels=False):
     n_channels = min(5, channels_matrix.shape[1])
-    offset_step = np.max(np.abs(channels_matrix)) * 1.5
-    
+    display_channels = channels_matrix[:, :n_channels]
+    display_enhanced = enhanced_signal
+
+    if equalize_channels:
+        # Display-only rescaling: normalise each lead to the same amplitude so
+        # complexes on quieter channels are not dwarfed by louder ones. Purely
+        # cosmetic -- detection runs on the original, unscaled signal.
+        channel_scales = np.max(np.abs(display_channels), axis=0)
+        channel_scales[channel_scales == 0] = 1.0
+        target_amp = np.median(channel_scales)
+        display_channels = display_channels / channel_scales * target_amp
+        offset_step = target_amp * 2.5
+
+        # Also rescale the enhanced (PCA) trace to that same target amplitude --
+        # on its own it is much flatter than the raw leads and the complexes are
+        # hard to see. Detection already ran on the unscaled signal.
+        enhanced_amp = np.max(np.abs(enhanced_signal))
+        if enhanced_amp > 0:
+            display_enhanced = enhanced_signal / enhanced_amp * target_amp
+    else:
+        offset_step = np.max(np.abs(channels_matrix)) * 1.5
+
     for i in range(n_channels):
-        ax.plot(t, channels_matrix[:, i] + (n_channels - i) * offset_step, color='#333333', lw=0.8)
-        
-    ax.plot(t, enhanced_signal, color='#d35400', lw=1.2, label='Enhanced Signal (PCA)')
-    
+        ax.plot(t, display_channels[:, i] + (n_channels - i) * offset_step, color='#333333', lw=0.8)
+
+    ax.plot(t, display_enhanced, color='#2980b9', lw=1.2, label='Enhanced Signal (PCA)')
+
     if len(peaks) > 0:
-        mask = (peaks < len(t))
+        mask = (peaks >= 0) & (peaks < len(t))
         valid_peaks = peaks[mask]
-        ax.plot(t[valid_peaks], enhanced_signal[valid_peaks] + (offset_step*0.2), 
-                marker='v', color='none', markeredgecolor='#2980b9', markersize=10, 
-                linestyle='None', label='Detected QRS')
+        marker_size = 10
+        # A 'v' marker's tip sits markersize/2 points below its anchor. Shift the
+        # anchor up by that same amount (in points, not data units) so the tip
+        # lands exactly on the peak regardless of the y-axis data scale.
+        tip_transform = offset_copy(ax.transData, fig=fig, x=0, y=marker_size / 2, units='points')
+        ax.plot(t[valid_peaks], display_enhanced[valid_peaks],
+                marker='v', color='none', markeredgecolor='#e74c3c', markersize=marker_size,
+                linestyle='None', label='Detected QRS', transform=tip_transform)
 
     ax.set_title(title, fontweight='bold')
     ax.set_xlabel('Time [s]')
-    ax.set_yticks([]) 
+    ax.set_yticks([])
     ax.legend(loc='upper right')
+
+def plot_qrs_detection(t, channels_matrix, enhanced_signal, peaks, title="QRS Detection"):
+    fig, ax = plt.subplots(figsize=(8, 8))
+    _draw_qrs_detection_panel(ax, fig, t, channels_matrix, enhanced_signal, peaks, title)
+    plt.tight_layout()
+    plt.show()
+
+def plot_qrs_detection_dual(t, maternal_channels, maternal_enhanced, maternal_peaks,
+                            fetal_channels, fetal_enhanced, fetal_peaks,
+                            maternal_title="Maternal QRS Detection (S4)",
+                            fetal_title="Fetal QRS Detection (S5)",
+                            suptitle="Maternal and Fetal QRS Detection"):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 8))
+    _draw_qrs_detection_panel(ax1, fig, t, maternal_channels, maternal_enhanced, maternal_peaks, maternal_title,
+                              equalize_channels=True)
+    _draw_qrs_detection_panel(ax2, fig, t, fetal_channels, fetal_enhanced, fetal_peaks, fetal_title)
+    fig.suptitle(suptitle, fontweight='bold', fontsize=16)
     plt.tight_layout()
     plt.show()
 
