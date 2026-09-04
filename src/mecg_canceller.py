@@ -259,7 +259,10 @@ class MECGCanceller:
                 M[t_s:t_e, 2] = avg_template[t_s:t_e]
 
                 try:
-                    # Ridge Regression (Tikhonov Regularisation)
+                    # Closed-form least-squares fit (normal equations) minimising mean-squared
+                    # error, with Ridge/Tikhonov regularisation for numerical stability. Not to be
+                    # confused with the iterative Widrow-Hoff LMS adaptive filter -- this solves for
+                    # the optimal coefficients directly rather than adapting them sample-by-sample.
                     A = M.T @ M + self.lam * np.eye(3)
                     b = M.T @ curr
                     coeffs = np.linalg.solve(A, b)
