@@ -341,3 +341,37 @@ def plot_ground_truth_validation(prec_sa, rec_sa, f1_sa, prec_ica, rec_ica, f1_i
 
     plt.tight_layout()
     plt.show()
+
+def plot_snr_sir_vs_reliability(df_fig10, jade_snr_threshold_db=-10.0, jade_sir_threshold_db=-25.0):
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharey=True)
+
+    axes[0, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_sa_fig10'],
+                       marker='o', color='#2c3e50', alpha=0.8)
+    axes[0, 0].set_ylabel('SA reliability')
+    axes[0, 0].set_title('SNR', fontweight='bold')
+
+    axes[0, 1].scatter(df_fig10['mean_sir_db'], df_fig10['reliability_sa_fig10'],
+                       marker='o', color='#2c3e50', alpha=0.8)
+    axes[0, 1].set_title('SIR', fontweight='bold')
+
+    axes[1, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_ica_fig10'],
+                       marker='o', color='#16a085', alpha=0.8)
+    axes[1, 0].axvline(jade_snr_threshold_db, color='#e74c3c', linestyle='--', lw=1,
+                       label=f'ICA failure threshold ({jade_snr_threshold_db:.0f} dB)')
+    axes[1, 0].set_xlabel('Mean SNR [dB]')
+    axes[1, 0].set_ylabel('ICA reliability')
+    axes[1, 0].legend(loc='lower right', fontsize=8)
+
+    axes[1, 1].scatter(df_fig10['mean_sir_db'], df_fig10['reliability_ica_fig10'],
+                       marker='o', color='#16a085', alpha=0.8)
+    axes[1, 1].axvline(jade_sir_threshold_db, color='#e74c3c', linestyle='--', lw=1,
+                       label=f'ICA failure threshold ({jade_sir_threshold_db:.0f} dB)')
+    axes[1, 1].set_xlabel('Mean SIR [dB]')
+    axes[1, 1].legend(loc='lower right', fontsize=8)
+
+    for ax in axes.flat:
+        ax.set_ylim([-0.05, 1.05])
+
+    fig.suptitle('FHR Detection Reliability vs SNR/SIR (Section 2.4.2, Figure 10)', fontweight='bold', fontsize=14)
+    plt.tight_layout()
+    plt.show()
