@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.signal import butter, filtfilt, hilbert, find_peaks, correlate
+from scipy.signal import butter, filtfilt, find_peaks, correlate
 from sklearn.decomposition import PCA
 from typing import Tuple, List, Optional
 

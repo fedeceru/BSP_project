@@ -1,8 +1,20 @@
+import os
+import re
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
 from scipy.signal import welch
 from matplotlib.transforms import offset_copy
+
+RESULTS_DIR = '../results'
+
+def _slugify(text):
+    text = re.sub(r'[^\w\s-]', '', text).strip().lower()
+    return re.sub(r'[-\s]+', '_', text)
+
+def _save_figure(fig, filename):
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    fig.savefig(os.path.join(RESULTS_DIR, filename), dpi=150, bbox_inches='tight')
 
 plt.rcParams.update({
     'axes.facecolor': '#f8f9fa',
@@ -39,26 +51,7 @@ def plot_filter_transfer_function(b, a, fs, title="Baseline Wander Remover (FIR 
 
     plt.suptitle(title, fontweight='bold', fontsize=14, y=1.05)
     plt.tight_layout()
-    plt.show()
-
-def plot_before_after(t, before, after, title="Before / After", before_label="Before", after_label="After"):
-    n_channels = min(5, before.shape[1])
-    offset_step = np.max(np.abs(before)) * 2.5
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 6), sharey=True)
-
-    for ch in range(n_channels):
-        ax1.plot(t, before[:, ch] + (n_channels - ch) * offset_step, color='#333333', lw=0.8)
-        ax2.plot(t, after[:, ch] + (n_channels - ch) * offset_step, color='#2c3e50', lw=0.8)
-
-    ax1.set_title(before_label, fontweight='bold')
-    ax2.set_title(after_label, fontweight='bold')
-    ax1.set_xlabel('Time [s]')
-    ax2.set_xlabel('Time [s]')
-    ax1.set_yticks([])
-
-    fig.suptitle(title, fontweight='bold', fontsize=14)
-    plt.tight_layout()
+    _save_figure(fig, f"{_slugify(title)}.png")
     plt.show()
 
 def plot_before_after_comprehensive(t, before, after, fs, title="Pipeline Evaluation: BWR + PLI Cancellation",
@@ -109,6 +102,7 @@ def plot_before_after_comprehensive(t, before, after, fs, title="Pipeline Evalua
         ax_freq.set_title("Power Spectral Density", fontweight='bold')
 
     fig.suptitle(title, fontweight='bold', fontsize=16)
+    _save_figure(fig, f"{_slugify(title)}.png")
     plt.show()
 
 def _draw_qrs_detection_panel(ax, fig, t, channels_matrix, enhanced_signal, peaks, title, equalize_channels=False):
@@ -157,12 +151,6 @@ def _draw_qrs_detection_panel(ax, fig, t, channels_matrix, enhanced_signal, peak
     ax.set_yticks([])
     ax.legend(loc='upper right')
 
-def plot_qrs_detection(t, channels_matrix, enhanced_signal, peaks, title="QRS Detection"):
-    fig, ax = plt.subplots(figsize=(8, 8))
-    _draw_qrs_detection_panel(ax, fig, t, channels_matrix, enhanced_signal, peaks, title)
-    plt.tight_layout()
-    plt.show()
-
 def plot_qrs_detection_dual(t, maternal_channels, maternal_enhanced, maternal_peaks,
                             fetal_channels, fetal_enhanced, fetal_peaks,
                             maternal_title="Maternal QRS Detection (S4)",
@@ -174,33 +162,38 @@ def plot_qrs_detection_dual(t, maternal_channels, maternal_enhanced, maternal_pe
     _draw_qrs_detection_panel(ax2, fig, t, fetal_channels, fetal_enhanced, fetal_peaks, fetal_title)
     fig.suptitle(suptitle, fontweight='bold', fontsize=16)
     plt.tight_layout()
+    _save_figure(fig, f"{_slugify(suptitle)}.png")
     plt.show()
 
-def plot_pipeline_stages(t, s1, s3, s5, s6, title="Sequential Analysis Pipeline"):
+def plot_pipeline_stages(t, s1, s4, s5, s6, title="Sequential Analysis Pipeline"):
+    # Shows S4 rather than S3 for the second panel: S3 is at the original
+    # sampling rate and can't be sliced with a fs_target-domain time axis, so
+    # S4 (the upsampled, otherwise-identical signal) stands in for it here.
     fig, axes = plt.subplots(1, 4, figsize=(16, 8), sharey=True)
     fig.suptitle(title, fontweight='bold', fontsize=14)
-    
+
     n_channels = min(5, s1.shape[1])
-    offset_step = np.max(np.abs(s3)) * 2.5
-    
-    signals = [s1, s3, s5]
-    titles = ['S1 (Raw)', 'S3 (BWR+PLC)', 'S5 (MECG Removed)']
-    
+    offset_step = np.max(np.abs(s4)) * 2.5
+
+    signals = [s1, s4, s5]
+    titles = ['S1 (Raw)', 'S4 (BWR+PLC+Upsampled)', 'S5 (MECG Removed)']
+
     for col, (sig, t_title) in enumerate(zip(signals, titles)):
         for ch in range(n_channels):
             axes[col].plot(t, sig[:, ch] + (n_channels - ch) * offset_step, color='black', lw=0.8)
         axes[col].set_title(t_title)
         axes[col].set_xlabel('Time [s]')
         axes[col].set_xticks([])
-        
+
     t_avg = np.linspace(-0.125, 0.125, len(s6))
     for ch in range(n_channels):
         axes[3].plot(t_avg, s6[:, ch] + (n_channels - ch) * offset_step, color='#8e44ad', lw=1.5)
     axes[3].set_title('S6 (Avg FECG)')
     axes[3].set_xlabel('Time [s]')
-    
+
     axes[0].set_yticks([])
     plt.tight_layout()
+    _save_figure(fig, f"{_slugify(title)}.png")
     plt.show()
 
 def plot_ica_stages(t, s1, s3, ica_sources, best_fecg_avg, title="ICA Algorithm Pipeline"):
@@ -232,6 +225,7 @@ def plot_ica_stages(t, s1, s3, ica_sources, best_fecg_avg, title="ICA Algorithm 
         ax.set_xlabel('Time [s]')
         
     plt.tight_layout()
+    _save_figure(fig, f"{_slugify(title)}.png")
     plt.show()
 
 def plot_fhr_traces(t_sa, fhr_sa, t_ica, fhr_ica):
@@ -248,8 +242,9 @@ def plot_fhr_traces(t_sa, fhr_sa, t_ica, fhr_ica):
     
     ax1.set_ylim([50, 200])
     ax1.set_xlim([0, 60])
-    
+
     plt.tight_layout()
+    _save_figure(fig, "fhr_traces.png")
     plt.show()
 
 def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
@@ -296,6 +291,7 @@ def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
     ax_bottom.legend(loc='upper right')
 
     plt.tight_layout()
+    _save_figure(fig, "detection_validation.png")
     plt.show()
 
 def plot_performance_summary(df_results, success_rate_sa, success_rate_ica):
@@ -318,6 +314,7 @@ def plot_performance_summary(df_results, success_rate_sa, success_rate_ica):
 
     fig.suptitle('FHR Detection Performance', fontweight='bold', fontsize=14)
     plt.tight_layout()
+    _save_figure(fig, "performance_summary.png")
     plt.show()
 
 def plot_ground_truth_validation(prec_sa, rec_sa, f1_sa, prec_ica, rec_ica, f1_ica, tolerance_ms):
@@ -340,9 +337,10 @@ def plot_ground_truth_validation(prec_sa, rec_sa, f1_sa, prec_ica, rec_ica, f1_i
     ax.legend(loc='lower right')
 
     plt.tight_layout()
+    _save_figure(fig, "ground_truth_validation.png")
     plt.show()
 
-def plot_snr_sir_vs_reliability(df_fig10, jade_snr_threshold_db=-10.0, jade_sir_threshold_db=-25.0):
+def plot_snr_sir_vs_reliability(df_fig10, ica_snr_threshold_db=-10.0, ica_sir_threshold_db=-25.0):
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharey=True)
 
     axes[0, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_sa_fig10'],
@@ -356,16 +354,16 @@ def plot_snr_sir_vs_reliability(df_fig10, jade_snr_threshold_db=-10.0, jade_sir_
 
     axes[1, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_ica_fig10'],
                        marker='o', color='#16a085', alpha=0.8)
-    axes[1, 0].axvline(jade_snr_threshold_db, color='#e74c3c', linestyle='--', lw=1,
-                       label=f'ICA failure threshold ({jade_snr_threshold_db:.0f} dB)')
+    axes[1, 0].axvline(ica_snr_threshold_db, color='#e74c3c', linestyle='--', lw=1,
+                       label=f'ICA failure threshold ({ica_snr_threshold_db:.0f} dB)')
     axes[1, 0].set_xlabel('Mean SNR [dB]')
     axes[1, 0].set_ylabel('ICA reliability')
     axes[1, 0].legend(loc='lower right', fontsize=8)
 
     axes[1, 1].scatter(df_fig10['mean_sir_db'], df_fig10['reliability_ica_fig10'],
                        marker='o', color='#16a085', alpha=0.8)
-    axes[1, 1].axvline(jade_sir_threshold_db, color='#e74c3c', linestyle='--', lw=1,
-                       label=f'ICA failure threshold ({jade_sir_threshold_db:.0f} dB)')
+    axes[1, 1].axvline(ica_sir_threshold_db, color='#e74c3c', linestyle='--', lw=1,
+                       label=f'ICA failure threshold ({ica_sir_threshold_db:.0f} dB)')
     axes[1, 1].set_xlabel('Mean SIR [dB]')
     axes[1, 1].legend(loc='lower right', fontsize=8)
 
@@ -374,4 +372,5 @@ def plot_snr_sir_vs_reliability(df_fig10, jade_snr_threshold_db=-10.0, jade_sir_
 
     fig.suptitle('FHR Detection Reliability vs SNR/SIR', fontweight='bold', fontsize=14)
     plt.tight_layout()
+    _save_figure(fig, "snr_sir_vs_reliability.png")
     plt.show()
