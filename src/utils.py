@@ -132,3 +132,51 @@ def precision_recall_f1(tp: int, fp: int, fn: int) -> Tuple[float, float, float]
     recall = tp / (tp + fn) if (tp + fn) else float('nan')
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else float('nan')
     return precision, recall, f1
+
+def compute_snr_sir(s4: np.ndarray, s5: np.ndarray, s6: np.ndarray, peaks: np.ndarray, fs: float,
+                    window_size_sec: float = 0.25, num_beats: int = 150) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Estimates the per-channel SNR and SIR of the abdominal FECG as defined in
+    section 2.4.2. The FECG power PF is estimated from S6, the synchronously
+    averaged fetal beat. The MECG power PM is estimated from the difference
+    between S4 and S5 (the maternal component the MECG canceller removed),
+    over the whole signal. The noise power PN is estimated from the residual
+    between each individual fetal beat window in S5 and the averaged template
+    S6, since averaging over many beats cancels out anything not correlated
+    with the fetal beat, leaving essentially noise.
+
+    Args:
+        s4 (np.ndarray): Multi-channel signal before MECG cancellation (n_samples, n_channels).
+        s5 (np.ndarray): Multi-channel signal after MECG cancellation (n_samples, n_channels).
+        s6 (np.ndarray): Synchronously averaged fetal beat, as returned by
+            FECGExtractor.synchronous_averaging(s5, peaks, window_size_sec, num_beats).
+        peaks (np.ndarray): Fetal QRS peak indices used to build s6.
+        fs (float): Sampling frequency in Hz.
+        window_size_sec (float): Beat-extraction window; must match the one used to build s6.
+        num_beats (int): Number of trailing beats averaged; must match the one used to build s6.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: (snr_db, sir_db), one value per channel.
+    """
+    half_window = int((window_size_sec / 2) * fs)
+    selected_peaks = peaks[-num_beats:] if len(peaks) > num_beats else peaks
+
+    noise_segments = []
+    for p in selected_peaks:
+        start = p - half_window
+        end = p + half_window
+        if start >= 0 and end <= len(s5):
+            noise_segments.append(s5[start:end, :] - s6)
+
+    p_f = np.mean(s6 ** 2, axis=0)
+    p_m = np.mean((s4 - s5) ** 2, axis=0)
+
+    if noise_segments:
+        p_n = np.mean(np.concatenate(noise_segments, axis=0) ** 2, axis=0)
+    else:
+        p_n = np.full(s6.shape[1], np.nan)
+
+    snr_db = 10 * np.log10(p_f / p_n)
+    sir_db = 10 * np.log10(p_f / p_m)
+
+    return snr_db, sir_db
