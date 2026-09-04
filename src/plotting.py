@@ -252,28 +252,70 @@ def plot_fhr_traces(t_sa, fhr_sa, t_ica, fhr_ica):
     plt.tight_layout()
     plt.show()
 
-def plot_reliability_correlations(df_results):
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharex='col', sharey=True)
-    
-    axes[0, 0].plot(df_results['SNR'], df_results['Rel_SA'], marker='x', color='black', linestyle='None')
-    axes[0, 0].set_ylabel("SA reliability [%]")
-    axes[0, 0].set_xlim([-20, 0])
-    
-    axes[0, 1].plot(df_results['SIR'], df_results['Rel_SA'], marker='x', color='black', linestyle='None')
-    axes[0, 1].set_ylabel("SA reliability [%]")
-    axes[0, 1].set_xlim([-35, -15])
-    
-    axes[1, 0].plot(df_results['SNR'], df_results['Rel_ICA'], marker='x', color='black', linestyle='None')
-    axes[1, 0].set_xlabel("SNR [dB]")
-    axes[1, 0].set_ylabel("ICA reliability [%]")
-    
-    axes[1, 1].plot(df_results['SIR'], df_results['Rel_ICA'], marker='x', color='black', linestyle='None')
-    axes[1, 1].set_xlabel("SIR [dB]")
-    axes[1, 1].set_ylabel("ICA reliability [%]")
-    
-    for ax in axes.flat:
-        ax.set_ylim([-5, 105])
-        
-    fig.suptitle("FHR Detection Reliability vs SNR/SIR", fontweight='bold', fontsize=14)
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
+                              t_avg_ms, avg_beat, n_beats, record_label=""):
+    channel_colors = ['#34495e', '#16a085', '#8e44ad', '#f39c12']
+    n_channels = min(len(channel_colors), channels_zoom.shape[1])
+
+    fig, (ax_top, ax_bottom) = plt.subplots(2, 1, figsize=(14, 10))
+
+    for ch in range(n_channels):
+        ax_top.plot(t_zoom, channels_zoom[:, ch], color=channel_colors[ch], lw=0.6, label=f'Ch {ch + 1}')
+
+    amp_range = np.max(np.abs(channels_zoom)) if channels_zoom.size else 1.0
+    marker_offset = amp_range * 0.12
+
+    def _marker_heights(idx):
+        heights = []
+        for p in idx:
+            lo, hi = max(0, p - 2), min(len(t_zoom), p + 3)
+            heights.append(np.max(channels_zoom[lo:hi, :n_channels]) + marker_offset)
+        return np.array(heights)
+
+    if len(detected_idx) > 0:
+        ax_top.plot(t_zoom[detected_idx], _marker_heights(detected_idx),
+                    marker='v', linestyle='None', color='none', markeredgecolor='#e74c3c',
+                    markeredgewidth=1.6, markersize=9, label='Detected (Algorithm)')
+
+    if len(gt_idx) > 0:
+        ax_top.plot(t_zoom[gt_idx], _marker_heights(gt_idx) + marker_offset * 0.6,
+                    marker='D', linestyle='None', color='none', markeredgecolor='#27ae60',
+                    markeredgewidth=1.6, markersize=8, label='Ground Truth')
+
+    ax_top.set_title(f"Multi-channel Signal (10 s Zoom) – {record_label}", fontweight='bold')
+    ax_top.set_xlabel('Time (s)')
+    ax_top.set_ylabel('Amplitude')
+    ax_top.legend(loc='upper right', ncol=2, fontsize=9)
+
+    for ch in range(n_channels):
+        ax_bottom.plot(t_avg_ms, avg_beat[:, ch], color=channel_colors[ch], lw=1.8, label=f'Ch {ch + 1}')
+
+    ax_bottom.set_title(f"Average Fetal Morphology (Multi-channel) – Based on {n_beats} Beats", fontweight='bold')
+    ax_bottom.set_xlabel('Time (ms)')
+    ax_bottom.set_ylabel('Mean Amplitude')
+    ax_bottom.legend(loc='upper right')
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_performance_summary(df_results, success_rate_sa, success_rate_ica):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Success rate
+    ax1.bar(['Sequential\nAnalysis', 'ICA'], [success_rate_sa, success_rate_ica],
+            color=['#2c3e50', '#16a085'])
+    ax1.set_ylabel('FHR detection success rate [%]')
+    ax1.set_ylim([0, 100])
+    ax1.set_title('Success Rate', fontweight='bold')
+
+    # Reliability distribution (feasible patients only)
+    rel_sa = df_results.loc[df_results['feasible_sa'], 'reliability_sa']
+    rel_ica = df_results.loc[df_results['feasible_ica'], 'reliability_ica']
+    ax2.boxplot([rel_sa, rel_ica], labels=['Sequential\nAnalysis', 'ICA'])
+    ax2.set_ylabel('FHR detection reliability')
+    ax2.set_ylim([0, 1.05])
+    ax2.set_title('Reliability', fontweight='bold')
+
+    fig.suptitle('FHR Detection Performance (Section 2.4.1)', fontweight='bold', fontsize=14)
+    plt.tight_layout()
     plt.show()
