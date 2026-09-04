@@ -84,4 +84,5 @@ scratch/
 # Local-only review notes (not for version control)
 sa_performance_review.md
 paper_validation_gaps.md
+documentation_consistency_review.md
 

@@ -16,7 +16,7 @@ Fetal cardiac monitoring is essential for evaluating fetal health and detecting 
 This project explicitly avoids "black-box" approaches, implementing a strictly controlled, 5-stage sequential filtering pipeline based on established signal processing techniques:
 
 ```
-Raw Abdominal Signal (400 Hz)
+Raw Abdominal Signal (1000 Hz)
     ↓
 1. Baseline Wander Removal
     ↓
@@ -34,8 +34,8 @@ Raw Abdominal Signal (400 Hz)
 **Challenge:** Patient movement and respiration induce low-frequency baseline drift that corrupts the fECG spectrum.
 
 **Implementation:**
-- High-pass FIR filter (1000 taps, 3 Hz cutoff).
-- Designed strictly using the **Window Method** (Hamming/Blackman).
+- High-pass FIR filter (3 Hz cutoff). Tap count auto-scales with the sampling rate to preserve filter sharpness — equivalent to 1000 taps at 400 Hz, which works out to ~2500 taps for this project's native 1000 Hz data.
+- Designed strictly using the **Window Method** (Hamming window).
 - Applied via zero-phase filtering (`scipy.signal.filtfilt`) to prevent any non-linear phase distortion of the QRS complexes.
 
 ### 2. Power-Line Interference Canceller
@@ -43,7 +43,7 @@ Raw Abdominal Signal (400 Hz)
 **Challenge:** 50 Hz power-line noise and its harmonics frequently corrupt clinical recordings.
 
 **Implementation:**
-- Adaptive noise cancellation targeting 50 Hz and its first 3 harmonics.
+- Adaptive noise cancellation targeting the 50 Hz mains fundamental.
 - Features an **amplitude-based blocking mechanism** that suspends filter adaptation during high-energy QRS complexes, strictly protecting the cardiac morphology from being filtered out.
 
 ### 3. Signal Upsampling
@@ -62,7 +62,7 @@ Raw Abdominal Signal (400 Hz)
 - **Channel Combination:** Principal Component Analysis (PCA) extracts the dominant maternal cardiac axis.
 - **QRS Detection:** Employs a **Matched Filter (Cross-correlation)** to detect R-peaks.
 - **Robust Template Generation:** Calculates a moving average of the last 10 maternal beats, implementing a trimming technique (discarding maximum and minimum amplitude beats) to reject outliers and prevent fetal QRS contamination.
-- **Subtraction:** Segments the template into P, QRS, and T waves, fitting them to the raw signal using **Standard Least Squares** (Moore-Penrose pseudo-inverse). No Ridge Regression or regularisation is used, strictly adhering to standard OLS.
+- **Subtraction:** Segments the template into P, QRS, and T waves, fitting each independently to the raw signal via **Ridge-regularised least squares** (a small Tikhonov penalty is added to the normal equations for numerical stability).
 
 ### 5. Fetal ECG Extractor
 
@@ -77,10 +77,9 @@ Raw Abdominal Signal (400 Hz)
 ```
 BSP_project/
 ├── data/                       # Raw PhysioNet datasets (e.g., NIFECGDB)
-├── docs/                       # Reference papers and documentation
 ├── notebooks/                  # Jupyter notebooks for interactive analysis
 │   └── main_analysis.ipynb     # Pipeline execution and validation
-├── results/                    # Saved figures, PSDs, and extracted metrics
+├── results/                    # Auto-generated figures (git-ignored; re-created by running the notebook)
 └── src/                        # Core Python modules
     ├── filtering.py            # FIR baseline and adaptive 50Hz filters
     ├── preprocessing.py        # Upsampling routines
@@ -94,8 +93,8 @@ BSP_project/
 
 The `main_analysis.ipynb` notebook includes advanced validation steps:
 - **Welch's Periodogram:** Compares the Power Spectral Density (PSD) before and after filtering.
-- **ICA Benchmarking:** Uses `FastICA` (from `scikit-learn`) as a baseline BSS method to demonstrate the superior robustness the sequential approach in noisy environments.
-- **Signal Quality:** Implements Sample Entropy (SampEn) to quantitatively evaluate the complexity and quality of the extracted fECG.
+- **ICA Benchmarking:** Uses `FastICA` (from `scikit-learn`) as a baseline BSS method to demonstrate the robustness of the sequential approach in noisy environments.
+- **Ground-Truth Validation:** Matches detected fetal QRS locations against the reference `.fqrs` annotations shipped with the dataset to compute real precision, recall and F1.
 
 ## Dependencies
 
