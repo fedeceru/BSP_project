@@ -81,3 +81,6 @@ results/*
 *.temp
 scratch/
 
+# Local-only review notes (not for version control)
+sa_performance_review.md
+

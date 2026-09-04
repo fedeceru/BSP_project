@@ -85,7 +85,9 @@ BSP_project/
     ├── filtering.py       # FIR baseline and adaptive 50Hz filters
     ├── preprocessing.py   # Upsampling routines
     ├── mecg_canceller.py  # Maternal ECG detection and least squares subtraction
-    └── fecg_extractor.py  # Fetal QRS detection and synchronous averaging
+    ├── fecg_extractor.py  # Fetal QRS detection and synchronous averaging
+    ├── utils.py           # FHR/reliability/success-rate metrics and ground-truth validation
+    └── plotting.py        # Shared matplotlib visualisations for the notebook
 ```
 
 ## Validation & Evaluation

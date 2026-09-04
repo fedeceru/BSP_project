@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy import signal
-from typing import Tuple
+from typing import Optional, Tuple
 
 class BaselineWanderRemover:
     """
@@ -10,17 +10,19 @@ class BaselineWanderRemover:
     to eliminate low-frequency baseline wander from ECG signals without introducing
     phase distortion.
     """
-    def __init__(self, num_taps: int = 1000, cutoff_hz: float = 3.0, fs: float = 400.0, window: str = 'hamming'):
+    def __init__(self, num_taps: Optional[int] = None, cutoff_hz: float = 3.0, fs: float = 400.0, window: str = 'hamming'):
         """
         Constructor for BaselineWanderRemover.
 
         Args:
-            num_taps (int): Number of filter coefficients. Defaults to 1000.
+            num_taps (Optional[int]): Number of filter coefficients. If not given, it
+                is scaled from fs to keep the same filter duration (and therefore the
+                same relative transition bandwidth) as 1000 taps at 400 Hz. Defaults to None.
             cutoff_hz (float): Cutoff frequency of the high-pass filter in Hz. Defaults to 3.0.
             fs (float): Sampling frequency of the signal in Hz. Defaults to 400.0.
             window (str): Window function to use for FIR filter design. Defaults to 'hamming'.
         """
-        self.num_taps = num_taps
+        self.num_taps = num_taps if num_taps is not None else int(round(1000 * fs / 400))
         self.cutoff_hz = cutoff_hz
         self.fs = fs
         self.window = window
