@@ -43,7 +43,7 @@ Raw Abdominal Signal (1000 Hz)
 **Challenge:** 50 Hz power-line noise and its harmonics frequently corrupt clinical recordings.
 
 **Implementation:**
-- Adaptive noise cancellation targeting the 50 Hz mains fundamental.
+- Adaptive noise cancellation targeting the 50 Hz mains fundamental and its next 3 harmonics (100/150/200 Hz by default), each with its own independently tracked amplitude and phase.
 - Features an **amplitude-based blocking mechanism** that suspends filter adaptation during high-energy QRS complexes, strictly protecting the cardiac morphology from being filtered out.
 
 ### 3. Signal Upsampling
