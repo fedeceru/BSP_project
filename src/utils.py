@@ -31,7 +31,7 @@ def compute_fhr(fetal_peaks: np.ndarray, fs: float) -> np.ndarray:
 def compute_fhr_reliability(fhr_values: np.ndarray, fhr_times: np.ndarray,
                             block_size_sec: float = 10.0, outlier_threshold_bpm: float = 10.0) -> float:
     """
-    Calculates the FHR detection reliability as defined in section 2.4.1:
+    Calculates the FHR detection reliability:
     1 minus the ratio between the number of outliers and the total number of
     points in the FHR trace. A point is an outlier if it deviates more than
     `outlier_threshold_bpm` from the median FHR calculated over its own
@@ -62,7 +62,7 @@ def compute_fhr_reliability(fhr_values: np.ndarray, fhr_times: np.ndarray,
 
 def compute_success_rate(feasible_flags) -> float:
     """
-    Calculates the FHR detection success rate as defined in section 2.4.1:
+    Calculates the FHR detection success rate:
     the percentage of patients for which a physiologically feasible FHR trace was found.
 
     Args:
@@ -136,9 +136,9 @@ def precision_recall_f1(tp: int, fp: int, fn: int) -> Tuple[float, float, float]
 def compute_snr_sir(s4: np.ndarray, s5: np.ndarray, s6: np.ndarray, peaks: np.ndarray, fs: float,
                     window_size_sec: float = 0.25, num_beats: int = 150) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Estimates the per-channel SNR and SIR of the abdominal FECG as defined in
-    section 2.4.2. The FECG power PF is estimated from S6, the synchronously
-    averaged fetal beat. The MECG power PM is estimated from the difference
+    Estimates the per-channel SNR and SIR of the abdominal FECG. The FECG
+    power PF is estimated from S6, the synchronously averaged fetal beat.
+    The MECG power PM is estimated from the difference
     between S4 and S5 (the maternal component the MECG canceller removed),
     over the whole signal. The noise power PN is estimated from the residual
     between each individual fetal beat window in S5 and the averaged template
