@@ -7,21 +7,21 @@ class MECGCanceller:
     """
     Maternal ECG (MECG) Canceller class.
     Extracts and subtracts maternal QRS complexes from abdominal ECG signals
-    using an adaptive template subtraction method with Ridge Regression and 
+    using an adaptive template subtraction method with Ridge Regression and
     robust template estimation.
     """
 
-    def __init__(self, fs: float = 2000.0, win_pre: float = 0.2, win_post: float = 0.4, 
-                 n_avg: int = 10, qrs_win: float = 0.04, lam: float = 1e-3):
+    def __init__(self, fs: float = 2000.0, win_pre: float = 0.25, win_post: float = 0.45,
+                 n_avg: int = 10, qrs_win: float = 0.05, lam: float = 1e-3):
         """
         Constructor for MECGCanceller.
 
         Args:
             fs (float): Sampling frequency of the signal in Hz. Defaults to 2000.0.
-            win_pre (float): Window size in seconds before the R-peak. Defaults to 0.2.
-            win_post (float): Window size in seconds after the R-peak. Defaults to 0.4.
+            win_pre (float): Window size in seconds before the R-peak. Defaults to 0.25.
+            win_post (float): Window size in seconds after the R-peak. Defaults to 0.45.
             n_avg (int): Number of historical beats to average for the template. Defaults to 10.
-            qrs_win (float): Half-window size in seconds to isolate the QRS complex. Defaults to 0.04.
+            qrs_win (float): Half-window size in seconds to isolate the QRS complex. Defaults to 0.05.
             lam (float): Ridge regression regularisation parameter (Tikhonov penalty). Defaults to 1e-3.
         """
         self.fs = fs
@@ -211,7 +211,7 @@ class MECGCanceller:
     def apply(self, signal_matrix: np.ndarray) -> np.ndarray:
         """
         Applies the complete MECG cancellation pipeline on a multi-channel signal.
-        Pads the signal, detects peaks, computes robust adaptive templates, models 
+        Pads the signal, detects peaks, computes robust adaptive templates, models
         P-QRS-T complexes via Ridge Regression, and subtracts them.
 
         Args:
@@ -241,20 +241,19 @@ class MECGCanceller:
             
             for peak in m_peaks:
                 curr = self._extract_beat(sig, peak, win_len, n_samples_pad)
-                if curr is None: 
+                if curr is None:
                     continue
-                
-                beat_buffer.append(curr)
-                if len(beat_buffer) > self.n_avg: 
-                    beat_buffer.pop(0)
 
-                # Use the robust template generation (rejecting min/max artifacts)
-                avg_template = self._compute_robust_template(beat_buffer)
+                # The template is built only from beats already in the buffer,
+                # keeping it independent of the current beat being cancelled.
+                # With no prior beats yet, the current beat is used as its own
+                # template so that this first occurrence still gets subtracted.
+                avg_template = self._compute_robust_template(beat_buffer) if beat_buffer else curr
 
                 # Segment the template for independent scaling
                 M = np.zeros((win_len, 3))
                 (p_s, p_e), (q_s, q_e), (t_s, t_e) = self._get_segments(win_len)
-                
+
                 M[p_s:p_e, 0] = avg_template[p_s:p_e]
                 M[q_s:q_e, 1] = avg_template[q_s:q_e]
                 M[t_s:t_e, 2] = avg_template[t_s:t_e]
@@ -273,6 +272,10 @@ class MECGCanceller:
                 start = peak - int(self.win_pre * self.fs)
                 end = start + win_len
                 residue[start:end] = curr - fitted_mecg
+
+                beat_buffer.append(curr)
+                if len(beat_buffer) > self.n_avg:
+                    beat_buffer.pop(0)
 
             fetal_ecg_padded[:, ch] = residue
 

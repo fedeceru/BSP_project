@@ -253,7 +253,7 @@ def plot_fhr_traces(t_sa, fhr_sa, t_ica, fhr_ica):
     plt.show()
 
 def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
-                              t_avg_ms, avg_beat, n_beats, record_label=""):
+                              t_avg_ms, avg_beat, n_beats):
     channel_colors = ['#34495e', '#16a085', '#8e44ad', '#f39c12']
     n_channels = min(len(channel_colors), channels_zoom.shape[1])
 
@@ -282,7 +282,7 @@ def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
                     marker='D', linestyle='None', color='none', markeredgecolor='#27ae60',
                     markeredgewidth=1.6, markersize=8, label='Ground Truth')
 
-    ax_top.set_title(f"Multi-channel Signal (10 s Zoom) – {record_label}", fontweight='bold')
+    ax_top.set_title(f"Multi-channel Signal", fontweight='bold')
     ax_top.set_xlabel('Time (s)')
     ax_top.set_ylabel('Amplitude')
     ax_top.legend(loc='upper right', ncol=2, fontsize=9)
@@ -317,5 +317,27 @@ def plot_performance_summary(df_results, success_rate_sa, success_rate_ica):
     ax2.set_title('Reliability', fontweight='bold')
 
     fig.suptitle('FHR Detection Performance (Section 2.4.1)', fontweight='bold', fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+def plot_ground_truth_validation(prec_sa, rec_sa, f1_sa, prec_ica, rec_ica, f1_ica, tolerance_ms):
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    metrics = ['Precision', 'Recall', 'F1']
+    sa_vals = [prec_sa * 100, rec_sa * 100, f1_sa * 100]
+    ica_vals = [prec_ica * 100, rec_ica * 100, f1_ica * 100]
+
+    x = np.arange(len(metrics))
+    width = 0.35
+    ax.bar(x - width / 2, sa_vals, width, label='Sequential Analysis', color='#2c3e50')
+    ax.bar(x + width / 2, ica_vals, width, label='ICA', color='#16a085')
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(metrics)
+    ax.set_ylabel('%')
+    ax.set_ylim([0, 105])
+    ax.set_title(f'Fetal QRS Detection vs Ground Truth (±{tolerance_ms:.0f} ms tolerance)', fontweight='bold')
+    ax.legend(loc='lower right')
+
     plt.tight_layout()
     plt.show()

@@ -72,47 +72,54 @@ class FECGExtractor:
         """
         if len(signal_matrix) == 0:
             return np.array([])
-            
+
         # Step 1: Multi-channel QRS enhancement via PCA
         enhanced_signal = self.enhance_fetal_qrs(signal_matrix)
-        
+
         if len(enhanced_signal) == 0:
             return np.array([])
-            
+
         width_samples = int(template_width_sec * self.fs)
-
-        # Search window for extracting the initial matched filter template
-        search_window = min(len(enhanced_signal), int(3 * self.fs))
-        if search_window == 0:
-            return np.array([])
-
-        initial_peak = int(np.argmax(enhanced_signal[:search_window]))
-        half_width = width_samples // 2
-        
-        start_idx = max(0, initial_peak - half_width)
-        end_idx = min(len(enhanced_signal), initial_peak + half_width)
-        template = enhanced_signal[start_idx:end_idx]
-        
-        if len(template) == 0:
-            return np.array([])
-            
-        # Step 2: Cross-correlation for optimal detection
-        cross_corr = np.correlate(enhanced_signal, template, mode='same')
-        
-        # Thresholding and peak extraction
-        threshold = 0.5 * np.max(cross_corr)
+        half_width = max(1, width_samples // 2)
         # Minimum distance based on physiological limit of 3.3 Hz (fetal tachycardia) -> ~0.3s
-        min_dist = int(0.3 * self.fs) 
-        
+        min_dist = int(0.3 * self.fs)
+
+        # Step 2: Rough peak detection across the whole signal, so the
+        # template isn't built from any single beat that might not be
+        # representative of the true fetal QRS shape
+        squared_signal = enhanced_signal ** 2
+        rough_thresh = np.mean(squared_signal) + 2 * np.std(squared_signal)
+        rough_peaks = self._find_peaks(squared_signal, rough_thresh, min_dist)
+
+        if len(rough_peaks) == 0:
+            return np.array([])
+
+        segments = []
+        for p in rough_peaks:
+            start = p - half_width
+            end = p + half_width
+            if start < 0 or end > len(enhanced_signal):
+                continue
+            segments.append(enhanced_signal[start:end])
+
+        if not segments:
+            return rough_peaks
+
+        # A median across many rough peaks is a far more robust template than
+        # a single beat, since it isn't thrown off by one noisy or non-fetal peak
+        template = np.median(np.array(segments), axis=0)
+
+        # Step 3: Cross-correlation for optimal detection
+        cross_corr = np.correlate(enhanced_signal, template, mode='same')
+        threshold = np.mean(cross_corr) + 1.5 * np.std(cross_corr)
         peaks = self._find_peaks(cross_corr, threshold, min_dist)
 
-        # Step 3: Refine each peak to the exact local maximum of the enhanced
+        # Step 4: Refine each peak to the exact local maximum of the enhanced
         # signal, since the cross-correlation peak can be off by a few samples.
-        refine_half_win = max(1, width_samples // 2)
         refined_peaks = []
         for p in peaks:
-            start = max(0, p - refine_half_win)
-            end = min(len(enhanced_signal), p + refine_half_win + 1)
+            start = max(0, p - half_width)
+            end = min(len(enhanced_signal), p + half_width + 1)
             refined_peaks.append(start + int(np.argmax(enhanced_signal[start:end])))
 
         return np.array(refined_peaks, dtype=int)
@@ -141,63 +148,6 @@ class FECGExtractor:
             else:
                 i += 1
         return np.array(peaks)
-
-    def compute_fhr(self, fetal_peaks: np.ndarray) -> np.ndarray:
-        """
-        Calculates Fetal Heart Rate (FHR) in beats per minute (bpm) based on detected peaks.
-        Filters out non-physiological values outside the ~78 bpm (1.3 Hz) to ~198 bpm (3.3 Hz) bounds.
-
-        Args:
-            fetal_peaks (np.ndarray): Array of detected fetal R-peak indices.
-
-        Returns:
-            np.ndarray: Array of valid FHR values in bpm.
-        """
-        if len(fetal_peaks) < 2:
-            return np.array([])
-            
-        rr_intervals_sec = np.diff(fetal_peaks) / self.fs
-        
-        # Filter RR intervals based on physiological constraints (1.3 Hz to 3.3 Hz -> 0.25s to 0.77s)
-        valid_rr = rr_intervals_sec[(rr_intervals_sec > 0.25) & (rr_intervals_sec < 0.77)]
-        
-        if len(valid_rr) == 0:
-            return np.array([])
-            
-        fhr = 60.0 / valid_rr
-        return fhr
-
-    def compute_fhr_reliability(self, fhr_values: np.ndarray, fhr_times: np.ndarray,
-                                block_size_sec: float = 10.0, outlier_threshold_bpm: float = 10.0) -> float:
-        """
-        Calculates the FHR detection reliability as defined in section 2.4.1:
-        1 minus the ratio between the number of outliers and the total number of
-        points in the FHR trace. A point is an outlier if it deviates more than
-        `outlier_threshold_bpm` from the median FHR calculated over its own
-        `block_size_sec`-second block.
-
-        Args:
-            fhr_values (np.ndarray): FHR values in bpm, as returned by compute_fhr.
-            fhr_times (np.ndarray): Time (in seconds) associated with each FHR value.
-            block_size_sec (float): Block duration in seconds. Defaults to 10.0.
-            outlier_threshold_bpm (float): Outlier deviation threshold in bpm. Defaults to 10.0.
-
-        Returns:
-            float: Reliability in [0, 1], or NaN if the trace is empty (undefined).
-        """
-        if len(fhr_values) == 0:
-            return np.nan
-
-        fhr_values = np.asarray(fhr_values)
-        block_idx = (np.asarray(fhr_times) // block_size_sec).astype(int)
-
-        is_outlier = np.zeros(len(fhr_values), dtype=bool)
-        for b in np.unique(block_idx):
-            mask = block_idx == b
-            block_median = np.median(fhr_values[mask])
-            is_outlier[mask] = np.abs(fhr_values[mask] - block_median) > outlier_threshold_bpm
-
-        return 1.0 - (np.sum(is_outlier) / len(fhr_values))
 
     def synchronous_averaging(self, signal_matrix: np.ndarray, peaks: np.ndarray,
                               num_beats: int = 150, window_size_sec: float = 0.4) -> Optional[np.ndarray]:
