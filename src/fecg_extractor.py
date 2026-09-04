@@ -167,7 +167,39 @@ class FECGExtractor:
         fhr = 60.0 / valid_rr
         return fhr
 
-    def synchronous_averaging(self, signal_matrix: np.ndarray, peaks: np.ndarray, 
+    def compute_fhr_reliability(self, fhr_values: np.ndarray, fhr_times: np.ndarray,
+                                block_size_sec: float = 10.0, outlier_threshold_bpm: float = 10.0) -> float:
+        """
+        Calculates the FHR detection reliability as defined in section 2.4.1:
+        1 minus the ratio between the number of outliers and the total number of
+        points in the FHR trace. A point is an outlier if it deviates more than
+        `outlier_threshold_bpm` from the median FHR calculated over its own
+        `block_size_sec`-second block.
+
+        Args:
+            fhr_values (np.ndarray): FHR values in bpm, as returned by compute_fhr.
+            fhr_times (np.ndarray): Time (in seconds) associated with each FHR value.
+            block_size_sec (float): Block duration in seconds. Defaults to 10.0.
+            outlier_threshold_bpm (float): Outlier deviation threshold in bpm. Defaults to 10.0.
+
+        Returns:
+            float: Reliability in [0, 1], or NaN if the trace is empty (undefined).
+        """
+        if len(fhr_values) == 0:
+            return np.nan
+
+        fhr_values = np.asarray(fhr_values)
+        block_idx = (np.asarray(fhr_times) // block_size_sec).astype(int)
+
+        is_outlier = np.zeros(len(fhr_values), dtype=bool)
+        for b in np.unique(block_idx):
+            mask = block_idx == b
+            block_median = np.median(fhr_values[mask])
+            is_outlier[mask] = np.abs(fhr_values[mask] - block_median) > outlier_threshold_bpm
+
+        return 1.0 - (np.sum(is_outlier) / len(fhr_values))
+
+    def synchronous_averaging(self, signal_matrix: np.ndarray, peaks: np.ndarray,
                               num_beats: int = 150, window_size_sec: float = 0.4) -> Optional[np.ndarray]:
         """
         Averages a set number of fetal beats (default 150) to improve Signal-to-Noise Ratio (SNR).
