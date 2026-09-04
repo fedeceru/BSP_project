@@ -44,11 +44,46 @@ class MECGCanceller:
         b, a = butter(3, [5/(self.fs/2), 40/(self.fs/2)], btype='band')
         return filtfilt(b, a, X, axis=0)
 
-    def _detect_maternal_qrs(self, signal_matrix: np.ndarray) -> np.ndarray:
+    def enhance_maternal_qrs(self, signal_matrix: np.ndarray) -> np.ndarray:
         """
-        Detects maternal QRS complexes using a two-stage approach:
-        1. Envelope detection via Hilbert Transform on the Principal Component.
-        2. Local cross-correlation for fine temporal alignment.
+        Enhances the maternal QRS complexes using a multi-channel approach:
+        1. Bandpass filter to remove baseline wander and high-frequency noise.
+        2. Channel variance normalization.
+        3. PCA to extract the first principal component (maximum variance = max SNR).
+
+        Args:
+            signal_matrix (np.ndarray): Multi-channel signal matrix.
+
+        Returns:
+            np.ndarray: A 1D array representing the enhanced maternal QRS signal.
+        """
+        # Step 1: Bandpass filter to isolate the QRS frequency band
+        bp = self._bandpass_detect(signal_matrix)
+
+        # Step 2: Channel variance normalization
+        # Center the data by subtracting the mean
+        centred = bp - np.mean(bp, axis=0)
+        # Calculate standard deviation for each channel
+        std_dev = np.std(centred, axis=0)
+        # Avoid division by zero in case of a completely flat channel
+        std_dev[std_dev == 0] = 1.0
+        # Normalize the variance (standard deviation = 1 for all channels)
+        normalized = centred / std_dev
+
+        # Step 3: PCA to extract the main component
+        pca_signal = PCA(n_components=1).fit_transform(normalized).flatten()
+
+        # Ensure a consistent polarity so that maternal R-peaks are always
+        # positive maxima (the PCA sign is otherwise arbitrary).
+        if np.max(pca_signal) < np.abs(np.min(pca_signal)):
+            pca_signal = -pca_signal
+
+        return pca_signal
+
+    def detect_maternal_qrs(self, signal_matrix: np.ndarray) -> np.ndarray:
+        """
+        Detects maternal QRS complexes via multi-channel enhancement followed by
+        cross-correlation with a QRS template.
 
         Args:
             signal_matrix (np.ndarray): Multi-channel signal matrix.
@@ -56,62 +91,47 @@ class MECGCanceller:
         Returns:
             np.ndarray: Array of refined R-peak indices.
         """
-        # Stage 1: Bandpass and PCA to extract main maternal component
-        bp = self._bandpass_detect(signal_matrix)
-        centred = bp - np.mean(bp, axis=0)
-        pca_signal = PCA(n_components=1).fit_transform(centred).flatten()
+        pca_signal = self.enhance_maternal_qrs(signal_matrix)
 
-        # Fix polarity if inverted
-        if np.max(pca_signal) < np.abs(np.min(pca_signal)):
-            pca_signal = -pca_signal
-
-        # Extract envelope using Hilbert Transform
-        env = np.abs(hilbert(pca_signal))
-        win = int(0.02 * self.fs)
-        env_smooth = np.convolve(env, np.ones(win)/win, mode='same')
-        
-        # Thresholding for rough peak detection
-        thresh = np.mean(env_smooth) + 1.5 * np.std(env_smooth)
+        # Find rough peaks to build an initial template
+        # We use a simple threshold on the squared signal to find high-energy regions
+        squared_signal = pca_signal ** 2
+        thresh = np.mean(squared_signal) + 2 * np.std(squared_signal)
         min_dist = int(0.35 * self.fs)
-        rough_peaks, _ = find_peaks(env_smooth, height=thresh, distance=min_dist)
+        rough_peaks, _ = find_peaks(squared_signal, height=thresh, distance=min_dist)
 
-        # Build a median template from rough peaks for fine alignment
+        # Build a median template from rough peaks
         window_sec = 0.08
         w_half = int((window_sec * self.fs) / 2)
-        
+
         segments = []
-        valid_rough = []
-        
         for p in rough_peaks:
-            if p - w_half < 0 or p + w_half >= len(pca_signal): 
+            if p - w_half < 0 or p + w_half >= len(pca_signal):
                 continue
             segments.append(pca_signal[p - w_half : p + w_half])
-            valid_rough.append(p)
-            
-        if not segments: 
+
+        if not segments:
             return rough_peaks
 
         maternal_template = np.median(np.array(segments), axis=0)
-        
-        # Stage 2: Fine-tune peaks via localised matched filtering
-        final_peaks = []
-        search_window = int(0.01 * self.fs) # Local search bounds
-        
-        for p in valid_rough:
-            start = p - w_half - search_window
-            end = p + w_half + search_window
-            
-            if start < 0 or end >= len(pca_signal): 
-                continue
-            
-            segment = pca_signal[start:end]
-            cc = correlate(segment, maternal_template, mode='valid')
-            shift_idx = np.argmax(cc)
-            true_peak = start + shift_idx + w_half
-            
-            final_peaks.append(true_peak)
 
-        return np.array(final_peaks)
+        # Perform cross-correlation with the template
+        cc = correlate(pca_signal, maternal_template, mode='same')
+
+        # Detect true peaks by finding the maxima of the cross-correlation
+        cc_thresh = np.mean(cc) + 1.5 * np.std(cc)
+        final_peaks, _ = find_peaks(cc, height=cc_thresh, distance=min_dist)
+
+        # Refine each peak to the exact local maximum of the enhanced signal,
+        # since the cross-correlation peak can be off by a few samples.
+        refine_half_win = max(1, w_half)
+        refined_peaks = []
+        for p in final_peaks:
+            start = max(0, p - refine_half_win)
+            end = min(len(pca_signal), p + refine_half_win + 1)
+            refined_peaks.append(start + int(np.argmax(pca_signal[start:end])))
+
+        return np.array(refined_peaks, dtype=int)
 
     def _get_segments(self, win_len: int) -> Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int]]:
         """
@@ -210,7 +230,7 @@ class MECGCanceller:
         n_samples_pad = sig_padded.shape[0]
         fetal_ecg_padded = np.zeros_like(sig_padded)
 
-        m_peaks = self._detect_maternal_qrs(sig_padded)
+        m_peaks = self.detect_maternal_qrs(sig_padded)
         win_len = int((self.win_pre + self.win_post) * self.fs)
         
         for ch in range(n_channels):

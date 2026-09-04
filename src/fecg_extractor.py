@@ -49,7 +49,13 @@ class FECGExtractor:
         # Perform PCA and get the first principal component
         pca = PCA(n_components=1)
         first_pc = pca.fit_transform(centred_signal).flatten()
-        
+
+        # Ensure a consistent polarity so that fetal R-peaks are always positive
+        # maxima (the PCA sign is otherwise arbitrary and depends on the input).
+        search_window = min(len(first_pc), int(3 * self.fs))
+        if search_window > 0 and np.max(first_pc[:search_window]) < np.abs(np.min(first_pc[:search_window])):
+            first_pc = -first_pc
+
         return first_pc
 
     def detect_fetal_qrs(self, signal_matrix: np.ndarray, template_width_sec: float = 0.05) -> np.ndarray:
@@ -74,16 +80,12 @@ class FECGExtractor:
             return np.array([])
             
         width_samples = int(template_width_sec * self.fs)
-        
+
         # Search window for extracting the initial matched filter template
         search_window = min(len(enhanced_signal), int(3 * self.fs))
         if search_window == 0:
             return np.array([])
-            
-        # Ensure correct polarity (R-peaks should be positive)
-        if np.max(enhanced_signal[:search_window]) < np.abs(np.min(enhanced_signal[:search_window])):
-            enhanced_signal = -enhanced_signal
-            
+
         initial_peak = int(np.argmax(enhanced_signal[:search_window]))
         half_width = width_samples // 2
         
@@ -103,7 +105,17 @@ class FECGExtractor:
         min_dist = int(0.3 * self.fs) 
         
         peaks = self._find_peaks(cross_corr, threshold, min_dist)
-        return peaks
+
+        # Step 3: Refine each peak to the exact local maximum of the enhanced
+        # signal, since the cross-correlation peak can be off by a few samples.
+        refine_half_win = max(1, width_samples // 2)
+        refined_peaks = []
+        for p in peaks:
+            start = max(0, p - refine_half_win)
+            end = min(len(enhanced_signal), p + refine_half_win + 1)
+            refined_peaks.append(start + int(np.argmax(enhanced_signal[start:end])))
+
+        return np.array(refined_peaks, dtype=int)
 
     def _find_peaks(self, signal: np.ndarray, threshold: float, min_dist: int) -> np.ndarray:
         """
@@ -146,8 +158,8 @@ class FECGExtractor:
             
         rr_intervals_sec = np.diff(fetal_peaks) / self.fs
         
-        # Filter RR intervals based on physiological constraints (1.3 Hz to 3.3 Hz approx)
-        valid_rr = rr_intervals_sec[(rr_intervals_sec > 0.25) & (rr_intervals_sec < 1.0)]
+        # Filter RR intervals based on physiological constraints (1.3 Hz to 3.3 Hz -> 0.25s to 0.77s)
+        valid_rr = rr_intervals_sec[(rr_intervals_sec > 0.25) & (rr_intervals_sec < 0.77)]
         
         if len(valid_rr) == 0:
             return np.array([])
