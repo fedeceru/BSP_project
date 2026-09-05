@@ -86,10 +86,19 @@ class BaselineWanderRemover:
 class AdaptivePLICanceller:
     """
     Adaptive Power Line Interference (PLI) Canceller class.
-    Removes power-line interference (e.g., 50 Hz mains noise) and its harmonics from ECG signals
-    using a Phase-Locked Loop (PLL) and error-isolation mechanisms.
+    Removes power-line interference (e.g., 50 Hz mains noise) from ECG signals using a
+    Phase-Locked Loop (PLL) and error-isolation mechanisms.
+
+    Configurable between two cancellation strategies via `num_harmonics`:
+    - Standard (num_harmonics=1, the default): tracks and cancels only the mains
+      fundamental (~50 Hz) with a single PLL.
+    - Selective harmonic cancellation (num_harmonics>1): additionally tracks and cancels
+      the next (num_harmonics - 1) mains harmonics, each with its own independent PLL, up
+      to a hard limit of MAX_HARMONIC_HZ (200 Hz).
     """
-    def __init__(self, fs: float = 400.0, f_line: float = 50.0, num_harmonics: int = 4):
+    MAX_HARMONIC_HZ = 200.0
+
+    def __init__(self, fs: float = 400.0, f_line: float = 50.0, num_harmonics: int = 1):
         """
         Constructor for AdaptivePLICanceller.
 
@@ -133,14 +142,23 @@ class AdaptivePLICanceller:
             fs (float): Sampling frequency of the signal in Hz. Defaults to 400.0.
             f_line (float): Nominal power-line frequency in Hz. Defaults to 50.0.
             num_harmonics (int): Number of mains components to track, starting from the fundamental
-                (1 = fundamental only, 4 = fundamental + first 3 harmonics). Defaults to 4.
+                (1 = standard single-tone cancellation of the fundamental only, >1 = selective
+                harmonic cancellation, additionally tracking the next (num_harmonics - 1) harmonics).
+                Defaults to 1 (standard cancellation).
 
         Raises:
-            ValueError: If num_harmonics is less than 1, or if the highest tracked harmonic isn't
-                safely below the Nyquist frequency for the given fs.
+            ValueError: If num_harmonics is less than 1, if the highest tracked harmonic exceeds
+                the MAX_HARMONIC_HZ cancellation limit, or if it isn't safely below the Nyquist
+                frequency for the given fs.
         """
         if num_harmonics < 1:
             raise ValueError("num_harmonics must be at least 1.")
+
+        if f_line * num_harmonics > self.MAX_HARMONIC_HZ:
+            raise ValueError(
+                f"Highest tracked harmonic ({f_line * num_harmonics:.1f} Hz) exceeds the "
+                f"{self.MAX_HARMONIC_HZ:.0f} Hz cancellation limit. Reduce num_harmonics."
+            )
 
         self.fs = fs
         self.f_line = f_line
