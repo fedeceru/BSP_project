@@ -257,25 +257,16 @@ def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
     for ch in range(n_channels):
         ax_top.plot(t_zoom, channels_zoom[:, ch], color=channel_colors[ch], lw=0.6, label=f'Ch {ch + 1}')
 
-    amp_range = np.max(np.abs(channels_zoom)) if channels_zoom.size else 1.0
-    marker_offset = amp_range * 0.12
+    for ch in range(n_channels):
+        if len(detected_idx) > 0:
+            ax_top.plot(t_zoom[detected_idx], channels_zoom[detected_idx, ch],
+                        marker='o', linestyle='None', color='#e74c3c', markersize=6,
+                        label='Detected (Algorithm)' if ch == 0 else None)
 
-    def _marker_heights(idx):
-        heights = []
-        for p in idx:
-            lo, hi = max(0, p - 2), min(len(t_zoom), p + 3)
-            heights.append(np.max(channels_zoom[lo:hi, :n_channels]) + marker_offset)
-        return np.array(heights)
-
-    if len(detected_idx) > 0:
-        ax_top.plot(t_zoom[detected_idx], _marker_heights(detected_idx),
-                    marker='v', linestyle='None', color='none', markeredgecolor='#e74c3c',
-                    markeredgewidth=1.6, markersize=9, label='Detected (Algorithm)')
-
-    if len(gt_idx) > 0:
-        ax_top.plot(t_zoom[gt_idx], _marker_heights(gt_idx) + marker_offset * 0.6,
-                    marker='D', linestyle='None', color='none', markeredgecolor='#27ae60',
-                    markeredgewidth=1.6, markersize=8, label='Ground Truth')
+        if len(gt_idx) > 0:
+            ax_top.plot(t_zoom[gt_idx], channels_zoom[gt_idx, ch],
+                        marker='x', linestyle='None', color='#2980b9', markersize=8,
+                        markeredgewidth=1.6, label='Ground Truth' if ch == 0 else None)
 
     ax_top.set_title(f"Multi-channel Signal", fontweight='bold')
     ax_top.set_xlabel('Time (s)')
@@ -307,7 +298,7 @@ def plot_performance_summary(df_results, success_rate_sa, success_rate_ica):
     # Reliability distribution (feasible patients only)
     rel_sa = df_results.loc[df_results['feasible_sa'], 'reliability_sa']
     rel_ica = df_results.loc[df_results['feasible_ica'], 'reliability_ica']
-    ax2.boxplot([rel_sa, rel_ica], labels=['Sequential\nAnalysis', 'ICA'])
+    ax2.boxplot([rel_sa, rel_ica], tick_labels=['Sequential\nAnalysis', 'ICA'])
     ax2.set_ylabel('FHR detection reliability')
     ax2.set_ylim([0, 1.05])
     ax2.set_title('Reliability', fontweight='bold')
