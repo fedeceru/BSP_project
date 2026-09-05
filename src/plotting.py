@@ -254,23 +254,33 @@ def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
 
     fig, (ax_top, ax_bottom) = plt.subplots(2, 1, figsize=(14, 10))
 
-    for ch in range(n_channels):
-        ax_top.plot(t_zoom, channels_zoom[:, ch], color=channel_colors[ch], lw=0.6, label=f'Ch {ch + 1}')
+    # Joyplot/waterfall stack: offset each channel's baseline by an amount
+    # derived from the 2nd/98th percentile spread (robust to isolated QRS
+    # outliers, unlike max(abs(...))), with headroom so traces don't collide.
+    p_lo, p_hi = np.percentile(channels_zoom[:, :n_channels], [2, 98], axis=0)
+    channel_spread = p_hi - p_lo
+    offset_step = channel_spread.max() * 1.5 if channel_spread.max() > 0 else 1.0
 
     for ch in range(n_channels):
+        offset = (n_channels - ch) * offset_step
+        ax_top.plot(t_zoom, channels_zoom[:, ch] + offset, color=channel_colors[ch], lw=0.6, label=f'Ch {ch + 1}')
+
+    for ch in range(n_channels):
+        offset = (n_channels - ch) * offset_step
         if len(detected_idx) > 0:
-            ax_top.plot(t_zoom[detected_idx], channels_zoom[detected_idx, ch],
+            ax_top.plot(t_zoom[detected_idx], channels_zoom[detected_idx, ch] + offset,
                         marker='o', linestyle='None', color='#e74c3c', markersize=6,
                         label='Detected (Algorithm)' if ch == 0 else None)
 
         if len(gt_idx) > 0:
-            ax_top.plot(t_zoom[gt_idx], channels_zoom[gt_idx, ch],
+            ax_top.plot(t_zoom[gt_idx], channels_zoom[gt_idx, ch] + offset,
                         marker='x', linestyle='None', color='#2980b9', markersize=8,
                         markeredgewidth=1.6, label='Ground Truth' if ch == 0 else None)
 
     ax_top.set_title(f"Multi-channel Signal", fontweight='bold')
     ax_top.set_xlabel('Time (s)')
-    ax_top.set_ylabel('Amplitude')
+    ax_top.set_yticks([(n_channels - ch) * offset_step for ch in range(n_channels)])
+    ax_top.set_yticklabels([f'Ch {ch + 1}' for ch in range(n_channels)])
     ax_top.legend(loc='upper right', ncol=2, fontsize=9)
 
     for ch in range(n_channels):
