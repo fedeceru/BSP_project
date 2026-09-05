@@ -2,9 +2,15 @@ import numpy as np
 from scipy import signal
 
 class SignalResampler:
-    def __init__(self, original_fs: float = 400.0, target_fs: float = 2000.0):
+    def __init__(self, original_fs: float = 1000.0, target_fs: float = 2000.0):
         """
         Resampler class to upsample the signal with proper anti-aliasing.
+
+        Args:
+            original_fs (float): Native sampling frequency of the signal in Hz. Defaults
+                to 1000.0 (this project's standard native/original sampling rate -- pass
+                fs_orig explicitly).
+            target_fs (float): Sampling frequency to upsample to, in Hz. Defaults to 2000.0.
         """
         if original_fs <= 0 or target_fs <= 0:
             raise ValueError("Frequencies must be strictly positive.")

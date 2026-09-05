@@ -10,7 +10,7 @@ class BaselineWanderRemover:
     to eliminate low-frequency baseline wander from ECG signals without introducing
     phase distortion.
     """
-    def __init__(self, num_taps: Optional[int] = None, cutoff_hz: float = 3.0, fs: float = 400.0, window: str = 'hamming'):
+    def __init__(self, num_taps: Optional[int] = None, cutoff_hz: float = 3.0, fs: float = 1000.0, window: str = 'hamming'):
         """
         Constructor for BaselineWanderRemover.
 
@@ -19,7 +19,8 @@ class BaselineWanderRemover:
                 is scaled from fs to keep the same filter duration (and therefore the
                 same relative transition bandwidth) as 1000 taps at 400 Hz. Defaults to None.
             cutoff_hz (float): Cutoff frequency of the high-pass filter in Hz. Defaults to 3.0.
-            fs (float): Sampling frequency of the signal in Hz. Defaults to 400.0.
+            fs (float): Sampling frequency of the signal in Hz. Defaults to 1000.0 (this
+                project's standard native/original sampling rate -- pass fs_orig explicitly).
             window (str): Window function to use for FIR filter design. Defaults to 'hamming'.
         """
         self.num_taps = num_taps if num_taps is not None else int(round(1000 * fs / 400))
@@ -98,7 +99,7 @@ class AdaptivePLICanceller:
     """
     MAX_HARMONIC_HZ = 200.0
 
-    def __init__(self, fs: float = 400.0, f_line: float = 50.0, num_harmonics: int = 1):
+    def __init__(self, fs: float = 1000.0, f_line: float = 50.0, num_harmonics: int = 1):
         """
         Constructor for AdaptivePLICanceller.
 
@@ -139,7 +140,8 @@ class AdaptivePLICanceller:
            algorithm to ensure stable gradient calculations.
 
         Args:
-            fs (float): Sampling frequency of the signal in Hz. Defaults to 400.0.
+            fs (float): Sampling frequency of the signal in Hz. Defaults to 1000.0 (this
+                project's standard native/original sampling rate -- pass fs_orig explicitly).
             f_line (float): Nominal power-line frequency in Hz. Defaults to 50.0.
             num_harmonics (int): Number of mains components to track, starting from the fundamental
                 (1 = standard single-tone cancellation of the fundamental only, >1 = selective
