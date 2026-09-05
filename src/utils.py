@@ -3,10 +3,13 @@ import numpy as np
 import wfdb
 from typing import Tuple
 
+FHR_MIN_BPM = 78 # 1.3Hz * 60 -- Bradycardia
+FHR_MAX_BPM = 198.0 # 3.3Hz * 60 -- Tachycardia
+
 def compute_fhr(fetal_peaks: np.ndarray, fs: float) -> np.ndarray:
     """
     Calculates Fetal Heart Rate (FHR) in beats per minute (bpm) based on detected peaks.
-    Filters out non-physiological values outside the ~78 bpm (1.3 Hz) to ~198 bpm (3.3 Hz) bounds.
+    Filters out values outside the [FHR_MIN_BPM, FHR_MAX_BPM] physiological bounds.
 
     Args:
         fetal_peaks (np.ndarray): Array of detected fetal R-peak indices.
@@ -19,14 +22,9 @@ def compute_fhr(fetal_peaks: np.ndarray, fs: float) -> np.ndarray:
         return np.array([])
 
     rr_intervals_sec = np.diff(fetal_peaks) / fs
+    fhr_bpm = 60.0 / rr_intervals_sec
 
-    # Filter RR intervals based on physiological constraints (1.3 Hz to 3.3 Hz -> 0.77s to 0.303s)
-    valid_rr = rr_intervals_sec[(rr_intervals_sec > 0.303) & (rr_intervals_sec < 0.77)]
-
-    if len(valid_rr) == 0:
-        return np.array([])
-
-    return 60.0 / valid_rr
+    return fhr_bpm[(fhr_bpm >= FHR_MIN_BPM) & (fhr_bpm <= FHR_MAX_BPM)]
 
 def compute_fhr_reliability(fhr_values: np.ndarray, fhr_times: np.ndarray,
                             block_size_sec: float = 10.0, outlier_threshold_bpm: float = 10.0) -> float:
@@ -180,3 +178,18 @@ def compute_snr_sir(s4: np.ndarray, s5: np.ndarray, s6: np.ndarray, peaks: np.nd
     sir_db = 10 * np.log10(p_f / p_m)
 
     return snr_db, sir_db
+
+def is_feasible_fhr(fhr_values: np.ndarray) -> bool:
+    """
+    Determines if a given FHR trace is physiologically feasible.
+
+    Args:
+        fhr_values (np.ndarray): FHR values in bpm.
+
+    Returns:
+        bool: True if the FHR trace is feasible, False otherwise.
+    """
+    if len(fhr_values) == 0:
+        return False
+
+    return bool(np.all((fhr_values >= FHR_MIN_BPM) & (fhr_values <= FHR_MAX_BPM)))

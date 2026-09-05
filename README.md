@@ -43,7 +43,7 @@ Raw Abdominal Signal (1000 Hz)
 **Challenge:** 50 Hz power-line noise and its harmonics frequently corrupt clinical recordings.
 
 **Implementation:**
-- Adaptive noise cancellation targeting the 50 Hz mains fundamental and its next 3 harmonics (100/150/200 Hz by default), each with its own independently tracked amplitude and phase.
+- Adaptive noise cancellation via a configurable Phase-Locked Loop (PLL), each tracked component with its own independently tracked amplitude and phase. Defaults to standard single-tone cancellation of the 50 Hz mains fundamental only; can be configured to additionally cancel a chosen number of harmonics (e.g. 100/150/200 Hz), up to a 200 Hz limit.
 - Features an **amplitude-based blocking mechanism** that suspends filter adaptation during high-energy QRS complexes, strictly protecting the cardiac morphology from being filtered out.
 
 ### 3. Signal Upsampling
@@ -51,7 +51,7 @@ Raw Abdominal Signal (1000 Hz)
 **Challenge:** Accurate removal of the maternal ECG requires sub-millisecond precision alignment.
 
 **Implementation:**
-- The signal is upsampled from 400 Hz to 2000 Hz.
+- The signal is upsampled from its native rate (1000 Hz for this dataset) to 2000 Hz.
 - Relies on polyphase filtering (`resample_poly`) to ensure strict anti-aliasing while increasing temporal resolution for optimal template matching.
 
 ### 4. Maternal ECG (MECG) Canceller
@@ -76,7 +76,7 @@ Raw Abdominal Signal (1000 Hz)
 
 ```
 BSP_project/
-├── data/                       # Raw PhysioNet datasets (e.g., NIFECGDB)
+├── data/                       # Raw PhysioNet records, organised as data/set_a/ with matching .fqrs ground-truth annotations
 ├── notebooks/                  # Jupyter notebooks for interactive analysis
 │   └── main_analysis.ipynb     # Pipeline execution and validation
 ├── results/                    # Auto-generated figures (git-ignored; re-created by running the notebook)
@@ -108,10 +108,11 @@ The `main_analysis.ipynb` notebook includes advanced validation steps:
 
 ## Usage
 
-1. Place your raw `.dat` and `.hea` files from the [PhysioNet Non-Invasive Fetal ECG Database](https://physionet.org/content/nifecgdb/) into the `data/` directory.
+1. Place your raw `.dat`/`.hea` files, plus their matching `.fqrs` ground-truth annotation files, into `data/set_a/` (this project targets the PhysioNet/CinC Challenge 2013 dataset layout, not the separate NIFECGDB database — check [physionet.org](https://physionet.org) for the exact record set you need).
 2. Open `notebooks/main_analysis.ipynb`.
 3. Run the pipeline cells sequentially to process the signals, extract the fECG, and visualise the results.
 
 ## References
 
 Martens, S. M. M., Rabotti, C., Mischi, M., & Sluijter, R. J. (2007). *A robust fetal ECG detection method for abdominal recordings*. Physiological Measurement, 28(4), 373-388.
+Xiao, Y., Lu, Y., Liu, M., Zeng, R., & Bai, J. (2022). A deep feature fusion network for fetal state assessment. Frontiers in Physiology, 13, 969052.

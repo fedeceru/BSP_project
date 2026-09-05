@@ -240,7 +240,7 @@ def plot_fhr_traces(t_sa, fhr_sa, t_ica, fhr_ica):
     ax2.set_ylabel("FHR [bpm]")
     ax2.set_xlabel("Time [s]")
     
-    ax1.set_ylim([50, 200])
+    ax1.set_ylim([50, 220])
     ax1.set_xlim([0, 60])
 
     plt.tight_layout()
