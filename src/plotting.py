@@ -232,7 +232,7 @@ def plot_fhr_traces(t_sa, fhr_sa, t_ica, fhr_ica):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True, sharey=True)
     
     ax1.plot(t_sa, fhr_sa, marker='.', color='black', linestyle='None', markersize=4)
-    ax1.set_title("FHR Trace - Sequential Analysis", fontweight='bold')
+    ax1.set_title("FHR Trace - SA", fontweight='bold')
     ax1.set_ylabel("FHR [bpm]")
     
     ax2.plot(t_ica, fhr_ica, marker='.', color='#2c3e50', linestyle='None', markersize=4)
@@ -314,7 +314,7 @@ def plot_performance_summary(df_results, success_rate_sa, success_rate_ica):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
     # Success rate
-    ax1.bar(['Sequential\nAnalysis', 'ICA'], [success_rate_sa, success_rate_ica],
+    ax1.bar(['SA', 'ICA'], [success_rate_sa, success_rate_ica],
             color=['#2c3e50', '#16a085'])
     ax1.set_ylabel('FHR detection success rate [%]')
     ax1.set_ylim([0, 100])
@@ -323,7 +323,7 @@ def plot_performance_summary(df_results, success_rate_sa, success_rate_ica):
     # Reliability distribution (feasible patients only)
     rel_sa = df_results.loc[df_results['feasible_sa'], 'reliability_sa']
     rel_ica = df_results.loc[df_results['feasible_ica'], 'reliability_ica']
-    ax2.boxplot([rel_sa, rel_ica], tick_labels=['Sequential\nAnalysis', 'ICA'])
+    ax2.boxplot([rel_sa, rel_ica], tick_labels=['SA', 'ICA'])
     ax2.set_ylabel('FHR detection reliability')
     ax2.set_ylim([0, 1.05])
     ax2.set_title('Reliability', fontweight='bold')
@@ -342,7 +342,7 @@ def plot_ground_truth_validation(prec_sa, rec_sa, f1_sa, prec_ica, rec_ica, f1_i
 
     x = np.arange(len(metrics))
     width = 0.35
-    ax.bar(x - width / 2, sa_vals, width, label='Sequential Analysis', color='#2c3e50')
+    ax.bar(x - width / 2, sa_vals, width, label='SA', color='#2c3e50')
     ax.bar(x + width / 2, ica_vals, width, label='ICA', color='#16a085')
 
     ax.set_xticks(x)
@@ -383,4 +383,76 @@ def plot_snr_sir_vs_reliability(df_fig10, ica_snr_threshold_db=-10.0, ica_sir_th
     fig.suptitle('FHR Detection Reliability vs SNR/SIR', fontweight='bold', fontsize=14)
     plt.tight_layout()
     _save_figure(fig, "snr_sir_vs_reliability.png")
+    plt.show()
+
+def plot_reliability_correlation(df_fig10, corr_stats):
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+
+    panels = [
+        ('SNR', 'mean_snr_db', 'Mean SNR [dB]', axes[0]),
+        ('SIR', 'mean_sir_db', 'Mean SIR [dB]', axes[1]),
+    ]
+    for predictor, pred_col, xlabel, ax in panels:
+        ax.scatter(df_fig10[pred_col], df_fig10['reliability_sa_fig10'],
+                   marker='o', color='#2c3e50', alpha=0.8, label='SA')
+        ax.scatter(df_fig10[pred_col], df_fig10['reliability_ica_fig10'],
+                   marker='x', color='#16a085', alpha=0.8, label='ICA')
+
+        rho_sa = corr_stats[(corr_stats['method'] == 'SA') & (corr_stats['predictor'] == predictor)].iloc[0]
+        rho_ica = corr_stats[(corr_stats['method'] == 'ICA') & (corr_stats['predictor'] == predictor)].iloc[0]
+        annotation = (f"SA:  ρ={rho_sa['spearman_rho']:.2f}, p={rho_sa['p_value']:.3f}\n"
+                      f"ICA: ρ={rho_ica['spearman_rho']:.2f}, p={rho_ica['p_value']:.3f}")
+        ax.text(0.03, 0.03, annotation, transform=ax.transAxes, fontsize=9,
+                verticalalignment='bottom', bbox=dict(facecolor='white', edgecolor='#cccccc'))
+
+        ax.set_xlabel(xlabel)
+        ax.set_title(predictor, fontweight='bold')
+        ax.set_ylim([-0.05, 1.05])
+
+    axes[0].set_ylabel('Reliability')
+    axes[0].legend(loc='upper left')
+    fig.suptitle('Reliability vs SNR/SIR Correlation (SA vs ICA)', fontweight='bold', fontsize=14)
+    plt.tight_layout()
+    _save_figure(fig, "reliability_correlation.png")
+    plt.show()
+
+def plot_tolerance_sensitivity(df_tolerance):
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    ax.plot(df_tolerance['tolerance_ms'], df_tolerance['f1_sa'] * 100, marker='o',
+            color='#2c3e50', label='SA')
+    ax.plot(df_tolerance['tolerance_ms'], df_tolerance['f1_ica'] * 100, marker='o',
+            color='#16a085', label='ICA')
+
+    ax.set_xlabel('Ground-truth matching tolerance [ms]')
+    ax.set_ylabel('F1 score [%]')
+    ax.set_ylim([0, 105])
+    ax.set_title('Fetal QRS Detection F1 vs Ground-Truth Matching Tolerance', fontweight='bold')
+    ax.legend(loc='lower right')
+
+    plt.tight_layout()
+    _save_figure(fig, "tolerance_sensitivity.png")
+    plt.show()
+
+def plot_fhr_accuracy(gt_sa, est_sa, mae_sa, rmse_sa, gt_ica, est_ica, mae_ica, rmse_ica):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5.5), sharex=True, sharey=True)
+
+    lims = [60, 220]
+    for ax, gt_vals, est_vals, mae, rmse, label, color in (
+        (ax1, gt_sa, est_sa, mae_sa, rmse_sa, 'SA', '#2c3e50'),
+        (ax2, gt_ica, est_ica, mae_ica, rmse_ica, 'ICA', '#16a085'),
+    ):
+        ax.plot(lims, lims, color='#999999', linestyle='--', linewidth=1, label='Identity (y = x)')
+        ax.scatter(gt_vals, est_vals, s=10, alpha=0.3, color=color)
+        ax.set_xlim(lims)
+        ax.set_ylim(lims)
+        ax.set_xlabel('Ground-truth FHR [bpm]')
+        ax.set_title(f'{label}\nMAE: {mae:.1f} bpm   RMSE: {rmse:.1f} bpm', fontweight='bold')
+        ax.legend(loc='upper left', fontsize=8)
+
+    ax1.set_ylabel('Estimated FHR [bpm]')
+
+    fig.suptitle('Estimated vs Ground-Truth FHR (all records, 1s grid)', fontweight='bold', fontsize=14)
+    plt.tight_layout()
+    _save_figure(fig, "fhr_accuracy.png")
     plt.show()
