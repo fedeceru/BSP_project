@@ -259,29 +259,44 @@ def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
     # outliers, unlike max(abs(...))), with headroom so traces don't collide.
     p_lo, p_hi = np.percentile(channels_zoom[:, :n_channels], [2, 98], axis=0)
     channel_spread = p_hi - p_lo
-    offset_step = channel_spread.max() * 1.5 if channel_spread.max() > 0 else 1.0
+    offset_step = channel_spread.max() * 3 if channel_spread.max() > 0 else 2
 
     for ch in range(n_channels):
         offset = (n_channels - ch) * offset_step
-        ax_top.plot(t_zoom, channels_zoom[:, ch] + offset, color=channel_colors[ch], lw=0.6, label=f'Ch {ch + 1}')
+        ax_top.plot(t_zoom, channels_zoom[:, ch] + offset, color=channel_colors[ch], lw=0.6)
 
     for ch in range(n_channels):
         offset = (n_channels - ch) * offset_step
         if len(detected_idx) > 0:
             ax_top.plot(t_zoom[detected_idx], channels_zoom[detected_idx, ch] + offset,
-                        marker='o', linestyle='None', color='#e74c3c', markersize=6,
-                        label='Detected (Algorithm)' if ch == 0 else None)
+                        marker='o', linestyle='None', color='#e74c3c', 
+                        markersize=7, markeredgecolor='white', markeredgewidth=1, zorder=3,
+                        label='Detected (SA)' if ch == 0 else None)
 
-        if len(gt_idx) > 0:
-            ax_top.plot(t_zoom[gt_idx], channels_zoom[gt_idx, ch] + offset,
-                        marker='x', linestyle='None', color='#2980b9', markersize=8,
-                        markeredgewidth=1.6, label='Ground Truth' if ch == 0 else None)
+    # Ground Truth: Linea verticale + Finestra di tolleranza
+    tolerance_s = 0.05  # Esempio: finestra di tolleranza di 50 ms
+    for i, idx in enumerate(gt_idx):
+        t_gt = t_zoom[idx]
+        
+        # Linea centrale
+        ax_top.axvline(t_gt, color='#2980b9', lw=1.2, alpha=0.7, zorder=1,
+                       label='Ground Truth' if i == 0 else None)
+        
+        # Banda di tolleranza
+        ax_top.axvspan(t_gt - tolerance_s, t_gt + tolerance_s, 
+                       color='#2980b9', alpha=0.1, zorder=0,
+                       label='Tolerance Window' if i == 0 else None)
 
-    ax_top.set_title(f"Multi-channel Signal", fontweight='bold')
+    ax_top.set_title("Multi-channel Signal with Detection Validation", fontweight='bold')
     ax_top.set_xlabel('Time (s)')
     ax_top.set_yticks([(n_channels - ch) * offset_step for ch in range(n_channels)])
     ax_top.set_yticklabels([f'Ch {ch + 1}' for ch in range(n_channels)])
-    ax_top.legend(loc='upper right', ncol=2, fontsize=9)
+    
+    # Rimuove la griglia verticale per non confonderla con il GT
+    ax_top.xaxis.grid(False) 
+    
+    # Sposta la legenda fuori dal grafico se copre i segnali, oppure usa un layout su 3 colonne
+    ax_top.legend(loc='upper right', ncol=3, fontsize=9, framealpha=0.9)
 
     for ch in range(n_channels):
         ax_bottom.plot(t_avg_ms, avg_beat[:, ch], color=channel_colors[ch], lw=1.8, label=f'Ch {ch + 1}')
