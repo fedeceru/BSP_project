@@ -29,30 +29,30 @@ plt.rcParams.update({
     'legend.facecolor': 'white'
 })
 
-def plot_filter_transfer_function(b, a, fs, title="Baseline Wander Remover (FIR Filter)"):
-    w, h = signal.freqz(b, a, worN=8000)
-    freq = (w * fs) / (2 * np.pi)
+#def plot_filter_transfer_function(b, a, fs, title="Baseline Wander Remover (FIR Filter)"):
+#    w, h = signal.freqz(b, a, worN=8000)
+#    freq = (w * fs) / (2 * np.pi)
+#
+#    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+#
+#    ax1.plot(freq, 20 * np.log10(abs(h) + 1e-10), color='#2c3e50')
+#    ax1.set_title("Magnitude", fontweight='bold')
+#    ax1.set_ylabel('Magnitude [dB]')
+#    ax1.set_xlabel('Frequency [Hz]')
+#    ax1.set_xlim([0, 50])
+#    ax1.set_ylim([-40, 10])
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+#    angles = np.unwrap(np.angle(h))
+#    ax2.plot(freq, np.degrees(angles), color='#2c3e50')
+#    ax2.set_title("Phase", fontweight='bold')
+#    ax2.set_ylabel('Phase [degrees]')
+#    ax2.set_xlabel('Frequency [Hz]')
+#    ax2.set_xlim([0, 50])
 
-    ax1.plot(freq, 20 * np.log10(abs(h) + 1e-10), color='#2c3e50')
-    ax1.set_title("Magnitude", fontweight='bold')
-    ax1.set_ylabel('Magnitude [dB]')
-    ax1.set_xlabel('Frequency [Hz]')
-    ax1.set_xlim([0, 50])
-    ax1.set_ylim([-40, 10])
-
-    angles = np.unwrap(np.angle(h))
-    ax2.plot(freq, np.degrees(angles), color='#2c3e50')
-    ax2.set_title("Phase", fontweight='bold')
-    ax2.set_ylabel('Phase [degrees]')
-    ax2.set_xlabel('Frequency [Hz]')
-    ax2.set_xlim([0, 50])
-
-    plt.suptitle(title, fontweight='bold', fontsize=14, y=1.05)
-    plt.tight_layout()
-    _save_figure(fig, f"{_slugify(title)}.png")
-    plt.show()
+#    plt.suptitle(title, fontweight='bold', fontsize=14, y=1.05)
+#    plt.tight_layout()
+#    _save_figure(fig, f"{_slugify(title)}.png")
+#    plt.show()
 
 def plot_before_after_comprehensive(t, before, after, fs, title="Pipeline Evaluation: BWR + PLI Cancellation",
                                     before_color='purple', after_color='green',
@@ -350,7 +350,7 @@ def plot_ground_truth_validation(prec_sa, rec_sa, f1_sa, prec_ica, rec_ica, f1_i
     ax.set_ylabel('%')
     ax.set_ylim([0, 105])
     ax.set_title(f'Fetal QRS Detection vs Ground Truth (±{tolerance_ms:.0f} ms tolerance)', fontweight='bold')
-    ax.legend(loc='lower right')
+    ax.legend(loc='upper right')
 
     plt.tight_layout()
     _save_figure(fig, "ground_truth_validation.png")
@@ -370,18 +370,12 @@ def plot_snr_sir_vs_reliability(df_fig10, ica_snr_threshold_db=-10.0, ica_sir_th
 
     axes[1, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_ica_fig10'],
                        marker='o', color='#16a085', alpha=0.8)
-    axes[1, 0].axvline(ica_snr_threshold_db, color='#e74c3c', linestyle='--', lw=1,
-                       label=f'ICA failure threshold ({ica_snr_threshold_db:.0f} dB)')
     axes[1, 0].set_xlabel('Mean SNR [dB]')
     axes[1, 0].set_ylabel('ICA reliability')
-    axes[1, 0].legend(loc='lower right', fontsize=8)
 
     axes[1, 1].scatter(df_fig10['mean_sir_db'], df_fig10['reliability_ica_fig10'],
                        marker='o', color='#16a085', alpha=0.8)
-    axes[1, 1].axvline(ica_sir_threshold_db, color='#e74c3c', linestyle='--', lw=1,
-                       label=f'ICA failure threshold ({ica_sir_threshold_db:.0f} dB)')
     axes[1, 1].set_xlabel('Mean SIR [dB]')
-    axes[1, 1].legend(loc='lower right', fontsize=8)
 
     for ax in axes.flat:
         ax.set_ylim([-0.05, 1.05])
