@@ -356,11 +356,22 @@ def plot_ground_truth_validation(prec_sa, rec_sa, f1_sa, prec_ica, rec_ica, f1_i
     _save_figure(fig, "ground_truth_validation.png")
     plt.show()
 
+def _add_trend_line(ax, x, y, color='red'):
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    valid = ~(np.isnan(x) | np.isnan(y))
+    if valid.sum() < 2:
+        return
+    slope, intercept = np.polyfit(x[valid], y[valid], 1)
+    x_line = np.array([x[valid].min(), x[valid].max()])
+    ax.plot(x_line, slope * x_line + intercept, linestyle=':', color=color, linewidth=2)
+
 def plot_snr_sir_vs_reliability(df_fig10, ica_snr_threshold_db=-10.0, ica_sir_threshold_db=-25.0):
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharey=True)
 
     axes[0, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_sa_fig10'],
                        marker='o', color='#2c3e50', alpha=0.8)
+    _add_trend_line(axes[0, 0], df_fig10['mean_snr_db'], df_fig10['reliability_sa_fig10'])
     axes[0, 0].set_ylabel('SA reliability')
     axes[0, 0].set_title('SNR', fontweight='bold')
 
@@ -370,6 +381,7 @@ def plot_snr_sir_vs_reliability(df_fig10, ica_snr_threshold_db=-10.0, ica_sir_th
 
     axes[1, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_ica_fig10'],
                        marker='o', color='#16a085', alpha=0.8)
+    _add_trend_line(axes[1, 0], df_fig10['mean_snr_db'], df_fig10['reliability_ica_fig10'])
     axes[1, 0].set_xlabel('Mean SNR [dB]')
     axes[1, 0].set_ylabel('ICA reliability')
 
@@ -385,35 +397,28 @@ def plot_snr_sir_vs_reliability(df_fig10, ica_snr_threshold_db=-10.0, ica_sir_th
     _save_figure(fig, "snr_sir_vs_reliability.png")
     plt.show()
 
-def plot_reliability_correlation(df_fig10, corr_stats):
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+def plot_reliability_correlation_matrix(df_fig10):
+    cols = ['mean_snr_db', 'mean_sir_db', 'reliability_sa_fig10', 'reliability_ica_fig10']
+    labels = ['SNR', 'SIR', 'SA Reliability', 'ICA Reliability']
+    corr_matrix = df_fig10[cols].corr(method='spearman').values
 
-    panels = [
-        ('SNR', 'mean_snr_db', 'Mean SNR [dB]', axes[0]),
-        ('SIR', 'mean_sir_db', 'Mean SIR [dB]', axes[1]),
-    ]
-    for predictor, pred_col, xlabel, ax in panels:
-        ax.scatter(df_fig10[pred_col], df_fig10['reliability_sa_fig10'],
-                   marker='o', color='#2c3e50', alpha=0.8, label='SA')
-        ax.scatter(df_fig10[pred_col], df_fig10['reliability_ica_fig10'],
-                   marker='x', color='#16a085', alpha=0.8, label='ICA')
+    fig, ax = plt.subplots(figsize=(6.5, 5.5))
+    im = ax.imshow(corr_matrix, cmap='RdBu_r', vmin=-1, vmax=1)
 
-        rho_sa = corr_stats[(corr_stats['method'] == 'SA') & (corr_stats['predictor'] == predictor)].iloc[0]
-        rho_ica = corr_stats[(corr_stats['method'] == 'ICA') & (corr_stats['predictor'] == predictor)].iloc[0]
-        annotation = (f"SA:  ρ={rho_sa['spearman_rho']:.2f}, p={rho_sa['p_value']:.3f}\n"
-                      f"ICA: ρ={rho_ica['spearman_rho']:.2f}, p={rho_ica['p_value']:.3f}")
-        ax.text(0.03, 0.03, annotation, transform=ax.transAxes, fontsize=9,
-                verticalalignment='bottom', bbox=dict(facecolor='white', edgecolor='#cccccc'))
+    ax.set_xticks(range(len(labels)))
+    ax.set_yticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=45, ha='right')
+    ax.set_yticklabels(labels)
 
-        ax.set_xlabel(xlabel)
-        ax.set_title(predictor, fontweight='bold')
-        ax.set_ylim([-0.05, 1.05])
+    for i in range(len(labels)):
+        for j in range(len(labels)):
+            ax.text(j, i, f'{corr_matrix[i, j]:.2f}', ha='center', va='center',
+                    color='white' if abs(corr_matrix[i, j]) > 0.5 else 'black')
 
-    axes[0].set_ylabel('Reliability')
-    axes[0].legend(loc='upper left')
-    fig.suptitle('Reliability vs SNR/SIR Correlation (SA vs ICA)', fontweight='bold', fontsize=14)
+    ax.set_title("Spearman Correlation Matrix: Reliability vs SNR/SIR", fontweight='bold')
+    fig.colorbar(im, ax=ax, label="Spearman's ρ")
     plt.tight_layout()
-    _save_figure(fig, "reliability_correlation.png")
+    _save_figure(fig, "reliability_correlation_matrix.png")
     plt.show()
 
 def plot_tolerance_sensitivity(df_tolerance):
