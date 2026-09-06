@@ -2,6 +2,8 @@ import os
 import numpy as np
 import wfdb
 from typing import Tuple
+from scipy.stats import spearmanr
+from sklearn.linear_model import LogisticRegression
 
 FHR_MIN_BPM_bradycardia = 78 # 1.3Hz * 60 -- Bradycardia
 FHR_MAX_BPM_tachycardia = 198.0 # 3.3Hz * 60 -- Tachycardia
@@ -13,6 +15,34 @@ def _fhr_bounds(std: bool) -> Tuple[float, float]:
     if std:
         return FHR_MIN_BPM_std, FHR_MAX_BPM_std
     return FHR_MIN_BPM_bradycardia, FHR_MAX_BPM_tachycardia
+
+def compute_fhr_series(fetal_peaks: np.ndarray, fs: float, std: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Calculates Fetal Heart Rate (FHR) in beats per minute (bpm) based on detected peaks, paired
+    with the time (in seconds, at the end of each RR interval) of each value. Filters out values
+    outside the [FHR_MIN_BPM, FHR_MAX_BPM] physiological bounds, keeping times and values aligned
+    via an explicit mask (rather than assuming filtered-out points form a contiguous prefix).
+
+    Args:
+        fetal_peaks (np.ndarray): Array of detected/annotated fetal R-peak indices.
+        fs (float): Sampling frequency of the signal the peaks were detected on, in Hz.
+        std (bool): Whether to use the standard physiological bounds instead of the
+            wider bradycardia/tachycardia bounds.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: (times_sec, fhr_bpm), same length, only physiologically
+        valid points included.
+    """
+    if len(fetal_peaks) < 2:
+        return np.array([]), np.array([])
+
+    times_sec = fetal_peaks[1:] / fs
+    rr_intervals_sec = np.diff(fetal_peaks) / fs
+    fhr_bpm = 60.0 / rr_intervals_sec
+
+    fhr_min, fhr_max = _fhr_bounds(std)
+    valid = (fhr_bpm >= fhr_min) & (fhr_bpm <= fhr_max)
+    return times_sec[valid], fhr_bpm[valid]
 
 def compute_fhr(fetal_peaks: np.ndarray, fs: float, std: bool = True) -> np.ndarray:
     """
@@ -28,14 +58,86 @@ def compute_fhr(fetal_peaks: np.ndarray, fs: float, std: bool = True) -> np.ndar
     Returns:
         np.ndarray: Array of valid FHR values in bpm.
     """
-    if len(fetal_peaks) < 2:
-        return np.array([])
+    _, fhr_bpm = compute_fhr_series(fetal_peaks, fs, std)
+    return fhr_bpm
 
-    rr_intervals_sec = np.diff(fetal_peaks) / fs
-    fhr_bpm = 60.0 / rr_intervals_sec
+def compute_fhr_coverage(fetal_peaks: np.ndarray, fs: float, total_duration_sec: float,
+                         std: bool = True) -> float:
+    """
+    Fraction of the recording covered by physiologically valid, RR-interval-derived FHR
+    estimates. Sums the duration of every in-bounds RR interval and divides by the recording
+    length, so a trace that is only sparsely/occasionally valid scores low even if it contains
+    a couple of coincidentally in-range beats.
 
-    fhr_min, fhr_max = _fhr_bounds(std)
-    return fhr_bpm[(fhr_bpm >= fhr_min) & (fhr_bpm <= fhr_max)]
+    Args:
+        fetal_peaks (np.ndarray): Detected fetal R-peak indices.
+        fs (float): Sampling frequency of the signal the peaks were detected on, in Hz.
+        total_duration_sec (float): Duration of the recording/segment being evaluated, in seconds.
+        std (bool): Whether to use the standard physiological bounds instead of the wider
+            bradycardia/tachycardia bounds. Should match the `std` value used for `compute_fhr`.
+
+    Returns:
+        float: Coverage in [0, 1].
+    """
+    if total_duration_sec <= 0:
+        return 0.0
+
+    _, fhr_bpm = compute_fhr_series(fetal_peaks, fs, std)
+    if len(fhr_bpm) == 0:
+        return 0.0
+
+    covered_sec = np.sum(60.0 / fhr_bpm)
+    return min(covered_sec / total_duration_sec, 1.0)
+
+def compute_fhr_mae_rmse(gt_times: np.ndarray, gt_fhr: np.ndarray,
+                         est_times: np.ndarray, est_fhr: np.ndarray,
+                         total_duration_sec: float, grid_step_sec: float = 1.0
+                         ) -> Tuple[float, float, float, np.ndarray, np.ndarray]:
+    """
+    Mean absolute error (MAE) and root-mean-square error (RMSE), in bpm, between an estimated
+    FHR trace and a ground-truth FHR trace. Detected and ground-truth peaks generally do not
+    occur at the same instants, so both traces are linearly interpolated onto a common regular
+    time grid before differencing; no extrapolation is performed, so only the time range covered
+    by both traces (their overlap) contributes to the comparison.
+
+    Args:
+        gt_times (np.ndarray): Time (s) of each ground-truth FHR value, as returned by
+            compute_fhr_series on the `.fqrs` annotations.
+        gt_fhr (np.ndarray): Ground-truth FHR values in bpm.
+        est_times (np.ndarray): Time (s) of each estimated FHR value.
+        est_fhr (np.ndarray): Estimated FHR values in bpm.
+        total_duration_sec (float): Duration of the recording/segment being evaluated, in seconds.
+        grid_step_sec (float): Spacing of the common comparison grid, in seconds.
+
+    Returns:
+        Tuple[float, float, float, np.ndarray, np.ndarray]: (mae_bpm, rmse_bpm, overlap_fraction,
+        gt_on_grid, est_on_grid). overlap_fraction is the share of the grid actually covered by
+        both traces (low overlap means the error estimate rests on little data). gt_on_grid /
+        est_on_grid are the paired interpolated values within the overlap (e.g. for an
+        estimated-vs-ground-truth scatter plot); empty if there is no overlap, in which case the
+        scalar metrics are NaN.
+    """
+    if len(gt_times) < 2 or len(est_times) < 2 or total_duration_sec <= 0:
+        return np.nan, np.nan, 0.0, np.array([]), np.array([])
+
+    grid = np.arange(0.0, total_duration_sec, grid_step_sec)
+
+    overlap_start = max(gt_times[0], est_times[0])
+    overlap_end = min(gt_times[-1], est_times[-1])
+    in_overlap = (grid >= overlap_start) & (grid <= overlap_end)
+
+    if not np.any(in_overlap):
+        return np.nan, np.nan, 0.0, np.array([]), np.array([])
+
+    gt_on_grid = np.interp(grid[in_overlap], gt_times, gt_fhr)
+    est_on_grid = np.interp(grid[in_overlap], est_times, est_fhr)
+
+    diff = est_on_grid - gt_on_grid
+    mae_bpm = np.mean(np.abs(diff))
+    rmse_bpm = np.sqrt(np.mean(diff ** 2))
+    overlap_fraction = np.sum(in_overlap) / len(grid)
+
+    return mae_bpm, rmse_bpm, overlap_fraction, gt_on_grid, est_on_grid
 
 def compute_fhr_reliability(fhr_values: np.ndarray, fhr_times: np.ndarray,
                             block_size_sec: float = 10.0, outlier_threshold_bpm: float = 10.0) -> float:
@@ -142,6 +244,78 @@ def precision_recall_f1(tp: int, fp: int, fn: int) -> Tuple[float, float, float]
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else float('nan')
     return precision, recall, f1
 
+def spearman_with_ci(x: np.ndarray, y: np.ndarray, n_boot: int = 2000, ci: float = 0.95,
+                     random_state: int = None) -> Tuple[float, float, float, float]:
+    """
+    Spearman's rank correlation coefficient between x and y, with a percentile bootstrap
+    confidence interval obtained by resampling the paired (x, y) observations with replacement.
+
+    Args:
+        x (np.ndarray): First variable (e.g. mean SNR/SIR in dB), one value per record.
+        y (np.ndarray): Second variable (e.g. reliability), same length as x. NaNs in either
+            array are dropped pairwise before correlating.
+        n_boot (int): Number of bootstrap resamples.
+        ci (float): Confidence level, e.g. 0.95 for a 95% CI.
+        random_state (int): Seed for reproducibility.
+
+    Returns:
+        Tuple[float, float, float, float]: (rho, p_value, ci_low, ci_high). All NaN if fewer
+        than 3 valid paired points remain after dropping NaNs.
+    """
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    valid = ~(np.isnan(x) | np.isnan(y))
+    x, y = x[valid], y[valid]
+    if len(x) < 3:
+        return np.nan, np.nan, np.nan, np.nan
+
+    rho, p_value = spearmanr(x, y)
+
+    rng = np.random.default_rng(random_state)
+    n = len(x)
+    boot_rhos = np.empty(n_boot)
+    for i in range(n_boot):
+        idx = rng.integers(0, n, n)
+        boot_rhos[i] = spearmanr(x[idx], y[idx])[0]
+
+    alpha = (1.0 - ci) / 2.0
+    ci_low, ci_high = np.nanpercentile(boot_rhos, [100 * alpha, 100 * (1 - alpha)])
+    return rho, p_value, ci_low, ci_high
+
+def fit_reliability_collapse_point(x: np.ndarray, y: np.ndarray, reliability_threshold: float = 0.5
+                                   ) -> Tuple[float, bool]:
+    """
+    Locates an empirical "reliability collapse point" along x (e.g. mean SNR or SIR, in dB):
+    the x value at which a 1D logistic classifier predicts a 50% chance of reliability falling
+    below `reliability_threshold`. Reliability is first binarized (>= threshold vs. below) and
+    a logistic regression is fit against x; the collapse point is where the fitted probability
+    crosses 0.5, i.e. -intercept / coefficient.
+
+    Args:
+        x (np.ndarray): Predictor values (e.g. mean SNR or SIR in dB), one per record.
+        y (np.ndarray): Reliability values in [0, 1], one per record.
+        reliability_threshold (float): Reliability level below which a record counts as
+            "collapsed".
+
+    Returns:
+        Tuple[float, bool]: (collapse_point_db, converged). (NaN, False) if there are fewer
+        than 2 records in either class (the classifier would be degenerate) or the fitted
+        coefficient is zero.
+    """
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    valid = ~(np.isnan(x) | np.isnan(y))
+    x, y = x[valid], y[valid]
+    labels = (y >= reliability_threshold).astype(int)
+
+    if len(np.unique(labels)) < 2 or np.min(np.bincount(labels)) < 2:
+        return np.nan, False
+
+    clf = LogisticRegression()
+    clf.fit(x.reshape(-1, 1), labels)
+    coef, intercept = clf.coef_[0, 0], clf.intercept_[0]
+    if coef == 0:
+        return np.nan, False
+    return -intercept / coef, True
+
 def compute_snr_sir(s4: np.ndarray, s5: np.ndarray, s6: np.ndarray, peaks: np.ndarray, fs: float,
                     window_size_sec: float = 0.25, num_beats: int = 150) -> Tuple[np.ndarray, np.ndarray]:
     """
@@ -189,22 +363,3 @@ def compute_snr_sir(s4: np.ndarray, s5: np.ndarray, s6: np.ndarray, peaks: np.nd
     sir_db = 10 * np.log10(p_f / p_m)
 
     return snr_db, sir_db
-
-def is_feasible_fhr(fhr_values: np.ndarray, std: bool = True) -> bool:
-    """
-    Determines if a given FHR trace is physiologically feasible.
-
-    Args:
-        fhr_values (np.ndarray): FHR values in bpm.
-        std (bool): Whether to use the standard physiological bounds instead of the
-            wider bradycardia/tachycardia bounds. Must match the `std` value used to
-            compute `fhr_values` for the result to be meaningful.
-
-    Returns:
-        bool: True if the FHR trace is feasible, False otherwise.
-    """
-    if len(fhr_values) == 0:
-        return False
-
-    fhr_min, fhr_max = _fhr_bounds(std)
-    return bool(np.all((fhr_values >= fhr_min) & (fhr_values <= fhr_max)))
