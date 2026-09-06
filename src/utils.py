@@ -9,7 +9,12 @@ FHR_MAX_BPM_tachycardia = 198.0 # 3.3Hz * 60 -- Tachycardia
 FHR_MIN_BPM_std = 120 # 2Hz * 60 -- Physiological lower bound
 FHR_MAX_BPM_std = 162 # 2.7Hz * 60 -- Physiological upper bound
 
-def compute_fhr(fetal_peaks: np.ndarray, fs: float, std: bool) -> np.ndarray:
+def _fhr_bounds(std: bool) -> Tuple[float, float]:
+    if std:
+        return FHR_MIN_BPM_std, FHR_MAX_BPM_std
+    return FHR_MIN_BPM_bradycardia, FHR_MAX_BPM_tachycardia
+
+def compute_fhr(fetal_peaks: np.ndarray, fs: float, std: bool = True) -> np.ndarray:
     """
     Calculates Fetal Heart Rate (FHR) in beats per minute (bpm) based on detected peaks.
     Filters out values outside the [FHR_MIN_BPM, FHR_MAX_BPM] physiological bounds.
@@ -17,7 +22,8 @@ def compute_fhr(fetal_peaks: np.ndarray, fs: float, std: bool) -> np.ndarray:
     Args:
         fetal_peaks (np.ndarray): Array of detected fetal R-peak indices.
         fs (float): Sampling frequency of the signal the peaks were detected on, in Hz.
-        std (bool): Whether to use the standard physiological bounds.
+        std (bool): Whether to use the standard physiological bounds instead of the
+            wider bradycardia/tachycardia bounds.
 
     Returns:
         np.ndarray: Array of valid FHR values in bpm.
@@ -28,10 +34,8 @@ def compute_fhr(fetal_peaks: np.ndarray, fs: float, std: bool) -> np.ndarray:
     rr_intervals_sec = np.diff(fetal_peaks) / fs
     fhr_bpm = 60.0 / rr_intervals_sec
 
-    if std:
-        return fhr_bpm[(fhr_bpm >= FHR_MIN_BPM_std) & (fhr_bpm <= FHR_MAX_BPM_std)]
-    else:
-        return fhr_bpm[(fhr_bpm >= FHR_MIN_BPM_bradycardia) & (fhr_bpm <= FHR_MAX_BPM_tachycardia)]
+    fhr_min, fhr_max = _fhr_bounds(std)
+    return fhr_bpm[(fhr_bpm >= fhr_min) & (fhr_bpm <= fhr_max)]
 
 def compute_fhr_reliability(fhr_values: np.ndarray, fhr_times: np.ndarray,
                             block_size_sec: float = 10.0, outlier_threshold_bpm: float = 10.0) -> float:
@@ -186,12 +190,15 @@ def compute_snr_sir(s4: np.ndarray, s5: np.ndarray, s6: np.ndarray, peaks: np.nd
 
     return snr_db, sir_db
 
-def is_feasible_fhr(fhr_values: np.ndarray) -> bool:
+def is_feasible_fhr(fhr_values: np.ndarray, std: bool = True) -> bool:
     """
     Determines if a given FHR trace is physiologically feasible.
 
     Args:
         fhr_values (np.ndarray): FHR values in bpm.
+        std (bool): Whether to use the standard physiological bounds instead of the
+            wider bradycardia/tachycardia bounds. Must match the `std` value used to
+            compute `fhr_values` for the result to be meaningful.
 
     Returns:
         bool: True if the FHR trace is feasible, False otherwise.
@@ -199,4 +206,5 @@ def is_feasible_fhr(fhr_values: np.ndarray) -> bool:
     if len(fhr_values) == 0:
         return False
 
-    return bool(np.all((fhr_values >= FHR_MIN_BPM_std) & (fhr_values <= FHR_MAX_BPM_std)))
+    fhr_min, fhr_max = _fhr_bounds(std)
+    return bool(np.all((fhr_values >= fhr_min) & (fhr_values <= fhr_max)))
