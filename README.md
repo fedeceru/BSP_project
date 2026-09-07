@@ -77,6 +77,7 @@ Raw Abdominal Signal (1000 Hz)
 ```
 BSP_project/
 ├── data/                       # Raw PhysioNet records, organised as data/set_a/ with matching .fqrs ground-truth annotations
+│                               #   (data/set_b/ also ships in this repo but has no .fqrs annotations, so the pipeline doesn't use it)
 ├── notebooks/                  # Jupyter notebooks for interactive analysis
 │   └── main_analysis.ipynb     # Pipeline execution and validation
 ├── results/                    # Auto-generated figures (git-ignored; re-created by running the notebook)

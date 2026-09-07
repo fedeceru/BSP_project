@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.decomposition import PCA
-from typing import Optional, Tuple, List
+from typing import Optional
 
 class FECGExtractor:
     """

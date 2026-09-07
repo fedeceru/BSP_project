@@ -332,7 +332,7 @@ def compute_snr_sir(s4: np.ndarray, s5: np.ndarray, s6: np.ndarray, peaks: np.nd
         s4 (np.ndarray): Multi-channel signal before MECG cancellation (n_samples, n_channels).
         s5 (np.ndarray): Multi-channel signal after MECG cancellation (n_samples, n_channels).
         s6 (np.ndarray): Synchronously averaged fetal beat, as returned by
-            FECGExtractor.synchronous_averaging(s5, peaks, window_size_sec, num_beats).
+            FECGExtractor.synchronous_averaging(s5, peaks, num_beats, window_size_sec).
         peaks (np.ndarray): Fetal QRS peak indices used to build s6.
         fs (float): Sampling frequency in Hz.
         window_size_sec (float): Beat-extraction window; must match the one used to build s6.
