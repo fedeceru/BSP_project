@@ -5,4 +5,5 @@ matplotlib
 wfdb
 pandas
 jupyter
+python-pptx
 
