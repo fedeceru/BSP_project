@@ -80,3 +80,6 @@ results/*
 *.tmp
 *.temp
 scratch/
+
+# Exclude presentation template 
+BSP_presentation_outline.md
