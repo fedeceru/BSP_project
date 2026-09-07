@@ -43,7 +43,7 @@ Raw Abdominal Signal (1000 Hz)
 **Challenge:** 50 Hz power-line noise and its harmonics frequently corrupt clinical recordings.
 
 **Implementation:**
-- Adaptive noise cancellation via a configurable Phase-Locked Loop (PLL), each tracked component with its own independently tracked amplitude and phase. Defaults to standard single-tone cancellation of the 50 Hz mains fundamental only; can be configured to additionally cancel a chosen number of harmonics (e.g. 100/150/200 Hz), up to a 200 Hz limit.
+- Adaptive noise cancellation via a configurable Phase-Locked Loop (PLL), each tracked component with its own independently tracked amplitude and phase. Defaults to standard single-tone cancellation of the 50 Hz mains fundamental only; can be configured to additionally cancel a chosen number of harmonics (e.g. 100/150/200 Hz), up to a 200 Hz limit. The main analysis notebook configures 4-harmonic cancellation (fundamental + 100/150/200 Hz) for all reported results.
 - Features an **amplitude-based blocking mechanism** that suspends filter adaptation during high-energy QRS complexes, strictly protecting the cardiac morphology from being filtered out.
 
 ### 3. Signal Upsampling
