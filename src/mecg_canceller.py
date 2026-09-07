@@ -11,25 +11,25 @@ class MECGCanceller:
     robust template estimation.
     """
 
-    def __init__(self, fs: float = 2000.0, win_pre: float = 0.25, win_post: float = 0.45,
-                 n_avg: int = 10, qrs_win: float = 0.05, lam: float = 1e-3):
+    def __init__(self, fs: float = 2000.0, win_pre_sec: float = 0.25, win_post_sec: float = 0.45,
+                 n_avg: int = 10, qrs_win_sec: float = 0.05, ridge_lambda: float = 1e-3):
         """
         Constructor for MECGCanceller.
 
         Args:
             fs (float): Sampling frequency of the signal in Hz. Defaults to 2000.0.
-            win_pre (float): Window size in seconds before the R-peak. Defaults to 0.25.
-            win_post (float): Window size in seconds after the R-peak. Defaults to 0.45.
+            win_pre_sec (float): Window size in seconds before the R-peak. Defaults to 0.25.
+            win_post_sec (float): Window size in seconds after the R-peak. Defaults to 0.45.
             n_avg (int): Number of historical beats to average for the template. Defaults to 10.
-            qrs_win (float): Half-window size in seconds to isolate the QRS complex. Defaults to 0.05.
-            lam (float): Ridge regression regularisation parameter (Tikhonov penalty). Defaults to 1e-3.
+            qrs_win_sec (float): Half-window size in seconds to isolate the QRS complex. Defaults to 0.05.
+            ridge_lambda (float): Ridge regression regularisation parameter (Tikhonov penalty). Defaults to 1e-3.
         """
         self.fs = fs
-        self.win_pre = win_pre
-        self.win_post = win_post
+        self.win_pre = win_pre_sec
+        self.win_post = win_post_sec
         self.n_avg = n_avg
-        self.qrs_win = qrs_win
-        self.lam = lam
+        self.qrs_win = qrs_win_sec
+        self.lam = ridge_lambda
 
     def _bandpass_detect(self, X: np.ndarray) -> np.ndarray:
         """
@@ -48,7 +48,7 @@ class MECGCanceller:
         """
         Enhances the maternal QRS complexes using a multi-channel approach:
         1. Bandpass filter to remove baseline wander and high-frequency noise.
-        2. Channel variance normalization.
+        2. Channel variance normalisation.
         3. PCA to extract the first principal component (maximum variance = max SNR).
 
         Args:
@@ -60,14 +60,14 @@ class MECGCanceller:
         # Step 1: Bandpass filter to isolate the QRS frequency band
         bp = self._bandpass_detect(signal_matrix)
 
-        # Step 2: Channel variance normalization
-        # Center the data by subtracting the mean
+        # Step 2: Channel variance normalisation
+        # Centre the data by subtracting the mean
         centred = bp - np.mean(bp, axis=0)
         # Calculate standard deviation for each channel
         std_dev = np.std(centred, axis=0)
         # Avoid division by zero in case of a completely flat channel
         std_dev[std_dev == 0] = 1.0
-        # Normalize the variance (standard deviation = 1 for all channels)
+        # Normalise the variance (standard deviation = 1 for all channels)
         normalized = centred / std_dev
 
         # Step 3: PCA to extract the main component

@@ -20,7 +20,7 @@ class BaselineWanderRemover:
                 same relative transition bandwidth) as 1000 taps at 400 Hz. Defaults to None.
             cutoff_hz (float): Cutoff frequency of the high-pass filter in Hz. Defaults to 3.0.
             fs (float): Sampling frequency of the signal in Hz. Defaults to 1000.0 (this
-                project's standard native/original sampling rate -- pass fs_orig explicitly).
+                project's standard native/original sampling rate -- pass fs explicitly).
             window (str): Window function to use for FIR filter design. Defaults to 'hamming'.
         """
         self.num_taps = num_taps if num_taps is not None else int(round(1000 * fs / 400))
@@ -141,7 +141,7 @@ class AdaptivePLICanceller:
 
         Args:
             fs (float): Sampling frequency of the signal in Hz. Defaults to 1000.0 (this
-                project's standard native/original sampling rate -- pass fs_orig explicitly).
+                project's standard native/original sampling rate -- pass fs explicitly).
             f_line (float): Nominal power-line frequency in Hz. Defaults to 50.0.
             num_harmonics (int): Number of mains components to track, starting from the fundamental
                 (1 = standard single-tone cancellation of the fundamental only, >1 = selective
@@ -221,13 +221,6 @@ class AdaptivePLICanceller:
             gain_at_h = np.abs(hresp)
             self.b_err_list.append(b / gain_at_h)
             self.a_err_list.append(a)
-
-        # Kept for backwards compatibility with anything referencing the original single-tone filter
-        self.w_n = self.w_n_list[0]
-        self.K_dw = self.K_dw_list[0]
-        self.K_phi = self.K_phi_list[0]
-        self.b_err = self.b_err_list[0]
-        self.a_err = self.a_err_list[0]
 
     @staticmethod
     def _lfilter_step(b: np.ndarray, a: np.ndarray, x: float, zi: np.ndarray) -> Tuple[float, np.ndarray]:

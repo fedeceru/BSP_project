@@ -29,30 +29,30 @@ plt.rcParams.update({
     'legend.facecolor': 'white'
 })
 
-#def plot_filter_transfer_function(b, a, fs, title="Baseline Wander Remover (FIR Filter)"):
-#    w, h = signal.freqz(b, a, worN=8000)
-#    freq = (w * fs) / (2 * np.pi)
-#
-#    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-#
-#    ax1.plot(freq, 20 * np.log10(abs(h) + 1e-10), color='#2c3e50')
-#    ax1.set_title("Magnitude", fontweight='bold')
-#    ax1.set_ylabel('Magnitude [dB]')
-#    ax1.set_xlabel('Frequency [Hz]')
-#    ax1.set_xlim([0, 50])
-#    ax1.set_ylim([-40, 10])
+def plot_filter_transfer_function(b, a, fs, title="Baseline Wander Remover (FIR Filter)"):
+    w, h = signal.freqz(b, a, worN=8000)
+    freq = (w * fs) / (2 * np.pi)
 
-#    angles = np.unwrap(np.angle(h))
-#    ax2.plot(freq, np.degrees(angles), color='#2c3e50')
-#    ax2.set_title("Phase", fontweight='bold')
-#    ax2.set_ylabel('Phase [degrees]')
-#    ax2.set_xlabel('Frequency [Hz]')
-#    ax2.set_xlim([0, 50])
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
-#    plt.suptitle(title, fontweight='bold', fontsize=14, y=1.05)
-#    plt.tight_layout()
-#    _save_figure(fig, f"{_slugify(title)}.png")
-#    plt.show()
+    ax1.plot(freq, 20 * np.log10(abs(h) + 1e-10), color='#2c3e50')
+    ax1.set_title("Magnitude", fontweight='bold')
+    ax1.set_ylabel('Magnitude [dB]')
+    ax1.set_xlabel('Frequency [Hz]')
+    ax1.set_xlim([0, 50])
+    ax1.set_ylim([-40, 10])
+
+    angles = np.unwrap(np.angle(h))
+    ax2.plot(freq, np.degrees(angles), color='#2c3e50')
+    ax2.set_title("Phase", fontweight='bold')
+    ax2.set_ylabel('Phase [degrees]')
+    ax2.set_xlabel('Frequency [Hz]')
+    ax2.set_xlim([0, 50])
+
+    plt.suptitle(title, fontweight='bold', fontsize=14, y=1.05)
+    plt.tight_layout()
+    _save_figure(fig, f"{_slugify(title)}.png")
+    plt.show()
 
 def plot_before_after_comprehensive(t, before, after, fs, title="Pipeline Evaluation: BWR + PLI Cancellation",
                                     before_color='purple', after_color='green',
@@ -176,7 +176,7 @@ def plot_pipeline_stages(t, s1, s4, s5, s6, title="Sequential Analysis Pipeline"
     offset_step = np.max(np.abs(s4)) * 2.5
 
     signals = [s1, s4, s5]
-    titles = ['S1 (Raw)', 'S4 (BWR+PLC+Upsampled)', 'S5 (MECG Removed)']
+    titles = ['S1 (Raw)', 'S4 (BWR+PLI+Upsampled)', 'S5 (MECG Removed)']
 
     for col, (sig, t_title) in enumerate(zip(signals, titles)):
         for ch in range(n_channels):
@@ -196,17 +196,20 @@ def plot_pipeline_stages(t, s1, s4, s5, s6, title="Sequential Analysis Pipeline"
     _save_figure(fig, f"{_slugify(title)}.png")
     plt.show()
 
-def plot_ica_stages(t, s1, s3, ica_sources, best_fecg_avg, title="ICA Algorithm Pipeline"):
+def plot_ica_stages(t, s1, s3_or_s4, ica_sources, best_fecg_avg, title="ICA Algorithm Pipeline"):
+    # Shows S4 rather than S3 for the second panel: S3 is at the original
+    # sampling rate and can't be sliced with a fs_target-domain time axis, so
+    # S4 (the upsampled, otherwise-identical signal) stands in for it here.
     fig, axes = plt.subplots(1, 4, figsize=(16, 8), sharey=False)
     fig.suptitle(title, fontweight='bold', fontsize=14)
-    
+
     n_channels = min(10, s1.shape[1])
     n_sources = min(10, ica_sources.shape[1])
-    
-    offset_sig = np.max(np.abs(s3)) * 2.5
+
+    offset_sig = np.max(np.abs(s3_or_s4)) * 2.5
     for ch in range(n_channels):
         axes[0].plot(t, s1[:, ch] + (n_channels - ch) * offset_sig, color='black', lw=0.8)
-        axes[1].plot(t, s3[:, ch] + (n_channels - ch) * offset_sig, color='black', lw=0.8)
+        axes[1].plot(t, s3_or_s4[:, ch] + (n_channels - ch) * offset_sig, color='black', lw=0.8)
     axes[0].set_title('Unipolar Signals (X)')
     axes[1].set_title('Filtered Signals')
     
@@ -273,17 +276,17 @@ def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
                         markersize=7, markeredgecolor='white', markeredgewidth=1, zorder=3,
                         label='Detected (SA)' if ch == 0 else None)
 
-    # Ground Truth: Linea verticale + Finestra di tolleranza
-    tolerance_s = 0.05  # Esempio: finestra di tolleranza di 50 ms
+    # Ground Truth: centre line + tolerance band
+    tolerance_s = 0.05  # Example: 50 ms tolerance window
     for i, idx in enumerate(gt_idx):
         t_gt = t_zoom[idx]
-        
-        # Linea centrale
+
+        # Centre line
         ax_top.axvline(t_gt, color='#2980b9', lw=1.2, alpha=0.7, zorder=1,
                        label='Ground Truth' if i == 0 else None)
-        
-        # Banda di tolleranza
-        ax_top.axvspan(t_gt - tolerance_s, t_gt + tolerance_s, 
+
+        # Tolerance band
+        ax_top.axvspan(t_gt - tolerance_s, t_gt + tolerance_s,
                        color='#2980b9', alpha=0.1, zorder=0,
                        label='Tolerance Window' if i == 0 else None)
 
@@ -292,10 +295,10 @@ def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
     ax_top.set_yticks([(n_channels - ch) * offset_step for ch in range(n_channels)])
     ax_top.set_yticklabels([f'Ch {ch + 1}' for ch in range(n_channels)])
     
-    # Rimuove la griglia verticale per non confonderla con il GT
-    ax_top.xaxis.grid(False) 
-    
-    # Sposta la legenda fuori dal grafico se copre i segnali, oppure usa un layout su 3 colonne
+    # Remove the vertical grid so it isn't confused with the GT markers
+    ax_top.xaxis.grid(False)
+
+    # Move the legend outside the plot if it covers the signals, or use a 3-column layout
     ax_top.legend(loc='upper right', ncol=3, fontsize=9, framealpha=0.9)
 
     for ch in range(n_channels):
@@ -363,30 +366,34 @@ def _add_trend_line(ax, x, y, color='red'):
     if valid.sum() < 2:
         return
     slope, intercept = np.polyfit(x[valid], y[valid], 1)
+    r = np.corrcoef(x[valid], y[valid])[0, 1]
     x_line = np.array([x[valid].min(), x[valid].max()])
-    ax.plot(x_line, slope * x_line + intercept, linestyle=':', color=color, linewidth=2)
+    sign = '+' if intercept >= 0 else '-'
+    label = f'Linear Fit\n(y={slope:.2f}x {sign} {abs(intercept):.2f})\nR={r:.2f}'
+    ax.plot(x_line, slope * x_line + intercept, color=color, linewidth=2, label=label)
+    ax.legend(loc='best', fontsize=8)
 
 def plot_snr_sir_vs_reliability(df_fig10, ica_snr_threshold_db=-10.0, ica_sir_threshold_db=-25.0):
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharey=True)
 
     axes[0, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_sa_fig10'],
-                       marker='o', color='#2c3e50', alpha=0.8)
+                       marker='x', color='#2c3e50', alpha=0.8, label='Dati')
     _add_trend_line(axes[0, 0], df_fig10['mean_snr_db'], df_fig10['reliability_sa_fig10'])
     axes[0, 0].set_ylabel('SA reliability')
     axes[0, 0].set_title('SNR', fontweight='bold')
 
     axes[0, 1].scatter(df_fig10['mean_sir_db'], df_fig10['reliability_sa_fig10'],
-                       marker='o', color='#2c3e50', alpha=0.8)
+                       marker='x', color='#2c3e50', alpha=0.8)
     axes[0, 1].set_title('SIR', fontweight='bold')
 
     axes[1, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_ica_fig10'],
-                       marker='o', color='#16a085', alpha=0.8)
+                       marker='x', color='#16a085', alpha=0.8, label='Dati')
     _add_trend_line(axes[1, 0], df_fig10['mean_snr_db'], df_fig10['reliability_ica_fig10'])
     axes[1, 0].set_xlabel('Mean SNR [dB]')
     axes[1, 0].set_ylabel('ICA reliability')
 
     axes[1, 1].scatter(df_fig10['mean_sir_db'], df_fig10['reliability_ica_fig10'],
-                       marker='o', color='#16a085', alpha=0.8)
+                       marker='x', color='#16a085', alpha=0.8)
     axes[1, 1].set_xlabel('Mean SIR [dB]')
 
     for ax in axes.flat:
@@ -398,25 +405,32 @@ def plot_snr_sir_vs_reliability(df_fig10, ica_snr_threshold_db=-10.0, ica_sir_th
     plt.show()
 
 def plot_reliability_correlation_matrix(df_fig10):
-    cols = ['mean_snr_db', 'mean_sir_db', 'reliability_sa_fig10', 'reliability_ica_fig10']
-    labels = ['SNR', 'SIR', 'SA Reliability', 'ICA Reliability']
+    cols = ['reliability_sa_fig10', 'reliability_ica_fig10', 'mean_snr_db', 'mean_sir_db']
+    labels = ['SA Reliability', 'ICA Reliability', 'SNR', 'SIR']
     corr_matrix = df_fig10[cols].corr(method='spearman').values
+    n = len(labels)
 
-    fig, ax = plt.subplots(figsize=(6.5, 5.5))
-    im = ax.imshow(corr_matrix, cmap='RdBu_r', vmin=-1, vmax=1)
+    fig, ax = plt.subplots(figsize=(7, 6))
+    cax = ax.imshow(corr_matrix, cmap='coolwarm', vmin=-1, vmax=1)
 
-    ax.set_xticks(range(len(labels)))
-    ax.set_yticks(range(len(labels)))
-    ax.set_xticklabels(labels, rotation=45, ha='right')
+    ax.set_xticks(range(n))
+    ax.set_yticks(range(n))
+    ax.set_xticklabels(labels)
     ax.set_yticklabels(labels)
 
-    for i in range(len(labels)):
-        for j in range(len(labels)):
-            ax.text(j, i, f'{corr_matrix[i, j]:.2f}', ha='center', va='center',
-                    color='white' if abs(corr_matrix[i, j]) > 0.5 else 'black')
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.tick_params(bottom=False, left=False)
 
-    ax.set_title("Spearman Correlation Matrix: Reliability vs SNR/SIR", fontweight='bold')
-    fig.colorbar(im, ax=ax, label="Spearman's ρ")
+    for i in range(n):
+        for j in range(n):
+            val = corr_matrix[i, j]
+            text_color = "white" if abs(val) > 0.6 else "black"
+            ax.text(j, i, f'{val:.2f}', ha='center', va='center', color=text_color)
+
+    ax.set_title("Spearman Correlation Matrix", fontweight='bold', pad=15)
+    fig.colorbar(cax, ax=ax, shrink=0.8)
+    
     plt.tight_layout()
     _save_figure(fig, "reliability_correlation_matrix.png")
     plt.show()
