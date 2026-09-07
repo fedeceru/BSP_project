@@ -13,16 +13,16 @@ Fetal cardiac monitoring is essential for evaluating fetal health and detecting 
 
 ## Pipeline Architecture
 
-This project explicitly avoids "black-box" approaches, implementing a strictly controlled, 5-stage sequential filtering pipeline based on established signal processing techniques:
+This project implemets a 5 stage sequential filtering pipeline based on established signal processing techniques:
 
 ```
 Raw Abdominal Signal (1000 Hz)
     ↓
 1. Baseline Wander Removal
     ↓
-2. Power-Line Interference Cancellation
+2. Power Line Interference Cancellation
     ↓
-3. Anti-Aliased Upsampling (2000 Hz)
+3. Anti Aliased Upsampling (2000 Hz)
     ↓
 4. Maternal ECG Cancellation (MECG)
     ↓
@@ -31,28 +31,28 @@ Raw Abdominal Signal (1000 Hz)
 
 ### 1. Baseline Wander Remover
 
-**Challenge:** Patient movement and respiration induce low-frequency baseline drift that corrupts the fECG spectrum.
+**Challenge:** Patient movement and respiration induce low frequency baseline drift that corrupts the FECG spectrum.
 
 **Implementation:**
-- High-pass FIR filter (3 Hz cutoff). Tap count auto-scales with the sampling rate to preserve filter sharpness — equivalent to 1000 taps at 400 Hz, which works out to ~2500 taps for this project's native 1000 Hz data.
+- High-pass FIR filter (3 Hz cutoff). Tap count auto-scales with the sampling rate to preserve filter sharpness, equivalent to 1000 taps at 400 Hz, which works out to ~2500 taps for this project's native 1000 Hz data.
 - Designed strictly using the **Window Method** (Hamming window).
-- Applied via zero-phase filtering (`scipy.signal.filtfilt`) to prevent any non-linear phase distortion of the QRS complexes.
+- Applied via zero-phase filtering (`scipy.signal.filtfilt`) to prevent any nonlinear phase distortion of the QRS complexes.
 
 ### 2. Power-Line Interference Canceller
 
-**Challenge:** 50 Hz power-line noise and its harmonics frequently corrupt clinical recordings.
+**Challenge:** 50 Hz power line noise and its harmonics frequently corrupt clinical recordings.
 
 **Implementation:**
-- Adaptive noise cancellation via a configurable Phase-Locked Loop (PLL), each tracked component with its own independently tracked amplitude and phase. Defaults to standard single-tone cancellation of the 50 Hz mains fundamental only; can be configured to additionally cancel a chosen number of harmonics (e.g. 100/150/200 Hz), up to a 200 Hz limit. The main analysis notebook configures 4-harmonic cancellation (fundamental + 100/150/200 Hz) for all reported results.
-- Features an **amplitude-based blocking mechanism** that suspends filter adaptation during high-energy QRS complexes, strictly protecting the cardiac morphology from being filtered out.
+- Adaptive noise cancellation via a configurable Phase Locked Loop (PLL), each tracked component with its own independently tracked amplitude and phase. Defaults to standard single tone cancellation of the 50 Hz mains fundamental only; can be configured to additionally cancel a chosen number of harmonics (e.g. 100/150/200 Hz), up to a 200 Hz limit. The main analysis notebook configures 4 harmonic cancellation (fundamental + 100/150/200 Hz) for all reported results.
+- Features an **amplitude-based blocking mechanism** that suspends filter adaptation during high energy QRS complexes, strictly protecting the cardiac morphology from being filtered out.
 
 ### 3. Signal Upsampling
 
-**Challenge:** Accurate removal of the maternal ECG requires sub-millisecond precision alignment.
+**Challenge:** Accurate removal of the maternal ECG requires sub millisecond precision alignment.
 
 **Implementation:**
 - The signal is upsampled from its native rate (1000 Hz for this dataset) to 2000 Hz.
-- Relies on polyphase filtering (`resample_poly`) to ensure strict anti-aliasing while increasing temporal resolution for optimal template matching.
+- Relies on polyphase filtering (`resample_poly`) to ensure strict anti aliasing while increasing temporal resolution for optimal template matching.
 
 ### 4. Maternal ECG (MECG) Canceller
 
@@ -60,39 +60,39 @@ Raw Abdominal Signal (1000 Hz)
 
 **Implementation:**
 - **Channel Combination:** Principal Component Analysis (PCA) extracts the dominant maternal cardiac axis.
-- **QRS Detection:** Employs a **Matched Filter (Cross-correlation)** to detect R-peaks.
+- **QRS Detection:** Employs a **Matched Filter (Cross-correlation)** to detect R peaks.
 - **Robust Template Generation:** Calculates a moving average of the last 10 maternal beats, implementing a trimming technique (discarding maximum and minimum amplitude beats) to reject outliers and prevent fetal QRS contamination.
-- **Subtraction:** Segments the template into P, QRS, and T waves, fitting each independently to the raw signal via **Ridge-regularised least squares** (a small Tikhonov penalty is added to the normal equations for numerical stability).
+- **Subtraction:** Segments the template into P, QRS, and T waves, fitting each independently to the raw signal via **Ridge regularised least squares** (a small Tikhonov penalty is added to the normal equations for numerical stability).
 
 ### 5. Fetal ECG Extractor
 
-**Challenge:** The residual signal contains the isolated but noisy fECG, requiring precise detection and enhancement.
+**Challenge:** The residual signal contains the isolated but noisy FECG, requiring precise detection and enhancement.
 
 **Implementation:**
-- **Fetal QRS Detection:** Re-applies the Matched Filter technique on the MECG-free residual to locate fetal R-peaks.
-- **Synchronous Averaging:** Computes the FHR and performs ensemble averaging over 150 consecutive fetal beats to dramatically increase the Signal-to-Noise Ratio (SNR) and reveal the clean fetal cardiac morphology.
+- **Fetal QRS Detection:** Re applies the Matched Filter technique on the MECG free residual to locate fetal R peaks.
+- **Synchronous Averaging:** Computes the FHR and performs ensemble averaging over 150 consecutive fetal beats to dramatically increase the Signal to Noise Ratio (SNR) and reveal the clean fetal cardiac morphology.
 
 ## Project Structure
 
 ```
 BSP_project/
 ├── data/                       # Raw PhysioNet records, organised as data/set_a/ with matching .fqrs ground-truth annotations
-│                               #   (data/set_b/ also ships in this repo but has no .fqrs annotations, so the pipeline doesn't use it)
-├── notebooks/                  # Jupyter notebooks for interactive analysis
+│                               
+├── notebooks/                  # Jupyter notebooks 
 │   └── main_analysis.ipynb     # Pipeline execution and validation
-├── results/                    # Auto-generated figures (git-ignored; re-created by running the notebook)
+├── results/                    # Auto generated figures (recreated by running the notebook)
 └── src/                        # Core Python modules
-    ├── filtering.py            # FIR baseline and adaptive 50Hz filters
-    ├── preprocessing.py        # Upsampling routines
-    ├── mecg_canceller.py       # Maternal ECG detection and least squares subtraction
+    ├── filtering.py            # BWR + PLIC
+    ├── preprocessing.py        # Upsampling (1000 Hz --> 2000 Hz)
+    ├── mecg_canceller.py       # MECG detection and least squares subtraction
     ├── fecg_extractor.py       # Fetal QRS detection and synchronous averaging
-    ├── utils.py                # FHR/reliability/success-rate metrics and ground-truth validation
-    └── plotting.py             # Shared matplotlib visualisations for the notebook
+    ├── utils.py                # FHR/reliability/success rate metrics and ground truth validation
+    └── plotting.py             # Visualisations
 ```
 
 ## Validation & Evaluation
 
-The `main_analysis.ipynb` notebook includes advanced validation steps:
+The `main_analysis.ipynb` notebook includes:
 - **Welch's Periodogram:** Compares the Power Spectral Density (PSD) before and after filtering.
 - **ICA Benchmarking:** Uses `FastICA` (from `scikit-learn`) as a baseline BSS method to demonstrate the robustness of the sequential approach in noisy environments.
 - **Ground-Truth Validation:** Matches detected fetal QRS locations against the reference `.fqrs` annotations shipped with the dataset to compute real precision, recall and F1.
@@ -109,11 +109,10 @@ The `main_analysis.ipynb` notebook includes advanced validation steps:
 
 ## Usage
 
-1. Place your raw `.dat`/`.hea` files, plus their matching `.fqrs` ground-truth annotation files, into `data/set_a/` (this project targets the PhysioNet/CinC Challenge 2013 dataset layout, not the separate NIFECGDB database — check [physionet.org](https://physionet.org) for the exact record set you need).
+1. Place your raw `.dat`/`.hea` files, plus their matching `.fqrs` ground truth annotation files, into `data/set_a/`.
 2. Open `notebooks/main_analysis.ipynb`.
 3. Run the pipeline cells sequentially to process the signals, extract the fECG, and visualise the results.
 
 ## References
 
 Martens, S. M. M., Rabotti, C., Mischi, M., & Sluijter, R. J. (2007). *A robust fetal ECG detection method for abdominal recordings*. Physiological Measurement, 28(4), 373-388.
-Xiao, Y., Lu, Y., Liu, M., Zeng, R., & Bai, J. (2022). A deep feature fusion network for fetal state assessment. Frontiers in Physiology, 13, 969052.
