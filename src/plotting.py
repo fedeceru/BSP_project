@@ -55,7 +55,7 @@ def plot_filter_transfer_function(b, a, fs, title="Baseline Wander Remover (FIR 
     plt.show()
 
 def plot_before_after_comprehensive(t, before, after, fs, title="Pipeline Evaluation: BWR + PLI Cancellation",
-                                    before_color='purple', after_color='green',
+                                    before_color='#0021fa', after_color='#fc0000',
                                     before_label="S1 (Raw)", after_label="S3 (Filtered)",
                                     show_psd=True):
     n_channels = min(4, before.shape[1]) # Limit to 4 channels for clarity
@@ -130,9 +130,9 @@ def _draw_qrs_detection_panel(ax, fig, t, channels_matrix, enhanced_signal, peak
         offset_step = np.max(np.abs(channels_matrix)) * 1.5
 
     for i in range(n_channels):
-        ax.plot(t, display_channels[:, i] + (n_channels - i) * offset_step, color='#333333', lw=0.8)
+        ax.plot(t, display_channels[:, i] + (n_channels - i) * offset_step, color='#2c3e50', lw=0.8)
 
-    ax.plot(t, display_enhanced, color='#2980b9', lw=1.2, label='Enhanced Signal (PCA)')
+    ax.plot(t, display_enhanced, color="#0021fa", lw=1.2, label='Enhanced Signal (PCA)')
 
     if len(peaks) > 0:
         mask = (peaks >= 0) & (peaks < len(t))
@@ -143,7 +143,7 @@ def _draw_qrs_detection_panel(ax, fig, t, channels_matrix, enhanced_signal, peak
         # lands exactly on the peak regardless of the y-axis data scale.
         tip_transform = offset_copy(ax.transData, fig=fig, x=0, y=marker_size / 2, units='points')
         ax.plot(t[valid_peaks], display_enhanced[valid_peaks],
-                marker='v', color='none', markeredgecolor='#e74c3c', markersize=marker_size,
+                marker='v', color='none', markeredgecolor="#fc0000", markersize=marker_size,
                 linestyle='None', label='Detected QRS', transform=tip_transform)
 
     ax.set_title(title, fontweight='bold')
@@ -187,7 +187,7 @@ def plot_pipeline_stages(t, s1, s4, s5, s6, title="Sequential Analysis Pipeline"
 
     t_avg = np.linspace(-0.125, 0.125, len(s6))
     for ch in range(n_channels):
-        axes[3].plot(t_avg, s6[:, ch] + (n_channels - ch) * offset_step, color='#8e44ad', lw=1.5)
+        axes[3].plot(t_avg, s6[:, ch] + (n_channels - ch) * offset_step, color='#fc0000', lw=1.5)
     axes[3].set_title('S6 (Avg FECG)')
     axes[3].set_xlabel('Time [s]')
 
@@ -215,11 +215,11 @@ def plot_ica_stages(t, s1, s3_or_s4, ica_sources, best_fecg_avg, title="ICA Algo
     
     offset_ica = np.max(np.abs(ica_sources)) * 2.5
     for ch in range(n_sources):
-        axes[2].plot(t, ica_sources[:, ch] + (n_sources - ch) * offset_ica, color='#16a085', lw=0.8)
+        axes[2].plot(t, ica_sources[:, ch] + (n_sources - ch) * offset_ica, color='#0021fa', lw=0.8)
     axes[2].set_title('ICA Sources (S)')
     
     t_avg = np.linspace(-0.125, 0.125, len(best_fecg_avg))
-    axes[3].plot(t_avg, best_fecg_avg, color='#8e44ad', lw=1.5)
+    axes[3].plot(t_avg, best_fecg_avg, color='#fc0000', lw=1.5)
     axes[3].set_title('Avg FECG (Best Source)')
     
     for ax in axes:
@@ -234,11 +234,11 @@ def plot_ica_stages(t, s1, s3_or_s4, ica_sources, best_fecg_avg, title="ICA Algo
 def plot_fhr_traces(t_sa, fhr_sa, t_ica, fhr_ica):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True, sharey=True)
     
-    ax1.plot(t_sa, fhr_sa, marker='.', color='black', linestyle='None', markersize=4)
+    ax1.plot(t_sa, fhr_sa, marker='.', color='#2c3e50', linestyle='None', markersize=4)
     ax1.set_title("FHR Trace - SA", fontweight='bold')
     ax1.set_ylabel("FHR [bpm]")
     
-    ax2.plot(t_ica, fhr_ica, marker='.', color='#2c3e50', linestyle='None', markersize=4)
+    ax2.plot(t_ica, fhr_ica, marker='.', color='#16a085', linestyle='None', markersize=4)
     ax2.set_title("FHR Trace - ICA", fontweight='bold')
     ax2.set_ylabel("FHR [bpm]")
     ax2.set_xlabel("Time [s]")
@@ -252,7 +252,7 @@ def plot_fhr_traces(t_sa, fhr_sa, t_ica, fhr_ica):
 
 def plot_detection_validation(t_zoom, channels_zoom, detected_idx, gt_idx,
                               t_avg_ms, avg_beat, n_beats):
-    channel_colors = ['#34495e', '#16a085', '#8e44ad', '#f39c12']
+    channel_colors = ['#2c3e50', '#16a085', '#8e44ad', '#f39c12']
     n_channels = min(len(channel_colors), channels_zoom.shape[1])
 
     fig, (ax_top, ax_bottom) = plt.subplots(2, 1, figsize=(14, 10))
@@ -373,27 +373,27 @@ def _add_trend_line(ax, x, y, color='red'):
     ax.plot(x_line, slope * x_line + intercept, color=color, linewidth=2, label=label)
     ax.legend(loc='best', fontsize=8)
 
-def plot_snr_sir_vs_reliability(df_fig10, ica_snr_threshold_db=-10.0, ica_sir_threshold_db=-25.0):
+def plot_snr_sir_vs_reliability(df_fig10):
     fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharey=True)
 
     axes[0, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_sa_fig10'],
-                       marker='x', color='#2c3e50', alpha=0.8, label='Dati')
+                       marker='x', color="#222d37", alpha=0.95)
     _add_trend_line(axes[0, 0], df_fig10['mean_snr_db'], df_fig10['reliability_sa_fig10'])
     axes[0, 0].set_ylabel('SA reliability')
     axes[0, 0].set_title('SNR', fontweight='bold')
 
     axes[0, 1].scatter(df_fig10['mean_sir_db'], df_fig10['reliability_sa_fig10'],
-                       marker='x', color='#2c3e50', alpha=0.8)
+                       marker='x', color="#222d37", alpha=0.95)
     axes[0, 1].set_title('SIR', fontweight='bold')
 
     axes[1, 0].scatter(df_fig10['mean_snr_db'], df_fig10['reliability_ica_fig10'],
-                       marker='x', color='#16a085', alpha=0.8, label='Dati')
+                       marker='x', color="#1f8a75", alpha=0.95)
     _add_trend_line(axes[1, 0], df_fig10['mean_snr_db'], df_fig10['reliability_ica_fig10'])
     axes[1, 0].set_xlabel('Mean SNR [dB]')
     axes[1, 0].set_ylabel('ICA reliability')
 
     axes[1, 1].scatter(df_fig10['mean_sir_db'], df_fig10['reliability_ica_fig10'],
-                       marker='x', color='#16a085', alpha=0.8)
+                       marker='x', color="#1f8a75", alpha=0.95)
     axes[1, 1].set_xlabel('Mean SIR [dB]')
 
     for ax in axes.flat:
@@ -404,14 +404,19 @@ def plot_snr_sir_vs_reliability(df_fig10, ica_snr_threshold_db=-10.0, ica_sir_th
     _save_figure(fig, "snr_sir_vs_reliability.png")
     plt.show()
 
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+
 def plot_reliability_correlation_matrix(df_fig10):
     cols = ['reliability_sa_fig10', 'reliability_ica_fig10', 'mean_snr_db', 'mean_sir_db']
     labels = ['SA Reliability', 'ICA Reliability', 'SNR', 'SIR']
     corr_matrix = df_fig10[cols].corr(method='spearman').values
     n = len(labels)
+    colors = ['#2c3e50', '#ffffff', '#16a085']
+    custom_cmap = mcolors.LinearSegmentedColormap.from_list('custom_cmap', colors)
 
     fig, ax = plt.subplots(figsize=(7, 6))
-    cax = ax.imshow(corr_matrix, cmap='coolwarm', vmin=-1, vmax=1)
+    cax = ax.imshow(corr_matrix, cmap=custom_cmap, vmin=-1, vmax=1)
 
     ax.set_xticks(range(n))
     ax.set_yticks(range(n))
@@ -425,7 +430,8 @@ def plot_reliability_correlation_matrix(df_fig10):
     for i in range(n):
         for j in range(n):
             val = corr_matrix[i, j]
-            text_color = "white" if abs(val) > 0.6 else "black"
+            text_color = "black"
+            
             ax.text(j, i, f'{val:.2f}', ha='center', va='center', color=text_color)
 
     ax.set_title("Spearman Correlation Matrix", fontweight='bold', pad=15)
