@@ -47,7 +47,7 @@
 - Above all: the **mother's ECG (MECG)** — an order of magnitude larger, same electrodes
 - Goal: strip away everything that isn't the fetal heartbeat
 
-**Image:** none, or a cropped raw-signal panel from `results/sequential_analysis_pipeline.png` (S1 column only) as a visual teaser.
+**Image:** none (a cropped S1-column teaser from `results/sequential_analysis_pipeline.png` was considered, but precisely cropping a matplotlib subplot boundary proved unreliable — the same figure appears in full on Slide 9 anyway).
 
 **Speaker notes:** Set up the signal-processing problem: on an abdominal recording, the fetal signal is small and mixed with several much larger interferers, dominated by the mother's own ECG. Every stage of the pipeline exists to remove one of these specific interferers.
 
@@ -95,13 +95,13 @@
 ## Slide 7 — Stage 3–4 in practice: maternal QRS detection & MECG cancellation
 
 **On-slide content:**
-- Maternal QRS detection: PCA channel-combination (maximizes SNR) + cross-correlation matched filter — **matches the paper**
+- Maternal QRS detection: PCA channel-combination (maximises SNR) + cross-correlation matched filter — **matches the paper**
 - MECG cancellation: average P-wave/QRS/T-wave templates, each **scaled independently** via least squares (paper's method)
-- This implementation adds **Ridge (Tikhonov) regularization** to that least-squares fit for numerical stability — one deviation from the original paper
+- This implementation adds **Ridge (Tikhonov) regularisation** to that least-squares fit for numerical stability — one deviation from the original paper
 
 **Image:** `results/maternal_qrs_detection_and_mecg_cancellation_s4_s5.png`
 
-**Speaker notes:** QRS localization follows the paper closely: combine channels via PCA to boost SNR, then find peaks by matched filtering. MECG removal also follows the paper's core idea — average and independently rescale the P, QRS and T segments to account for morphology changing over time — but this implementation regularizes the least-squares fit (Ridge/Tikhonov) for stability, an addition not in the original paper. The image shows the large maternal complexes (S4) almost entirely gone after cancellation (S5).
+**Speaker notes:** QRS localisation follows the paper closely: combine channels via PCA to boost SNR, then find peaks by matched filtering. MECG removal also follows the paper's core idea — average and independently rescale the P, QRS and T segments to account for morphology changing over time — but this implementation regularises the least-squares fit (Ridge/Tikhonov) for stability, an addition not in the original paper. The image shows the large maternal complexes (S4) almost entirely gone after cancellation (S5).
 
 ---
 
@@ -261,7 +261,7 @@
 
 **Image:** none.
 
-**Speaker notes:** Bring it home: reproducing this method on a real, independently-annotated dataset confirms the paper's central claim — a non-blind, a priori-informed pipeline outperforms blind ICA, especially under the low-SNR conditions typical of real abdominal recordings. Close with the practical motivation (affordable, non-invasive monitoring) and a few concrete next steps.
+**Speaker notes:** Bring it home: reproducing this method on a real, independently annotated dataset confirms the paper's central claim — a non-blind, a priori-informed pipeline outperforms blind ICA, especially under the low-SNR conditions typical of real abdominal recordings. Close with the practical motivation (affordable, non-invasive monitoring) and a few concrete next steps.
 
 ---
 

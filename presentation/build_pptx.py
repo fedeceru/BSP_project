@@ -58,6 +58,54 @@ def next_figure_number():
 
 
 # ---------------------------------------------------------------------------
+# Typography helpers: no compound word may ever be split across a line-wrap,
+# and wrapped bullet lines must hang-indent under the text, not the glyph.
+# Also: a character-width heuristic for estimating wrapped line counts, since
+# there is no live text-layout engine available inside the generator.
+# ---------------------------------------------------------------------------
+AVG_CHAR_WIDTH_FACTOR = 0.52  # rough average glyph width for Calibri, as a fraction of font size
+BULLET_INDENT_IN = 0.3
+
+
+def nbhyphen(text):
+    """Replace a hyphen directly between two word characters with a non-breaking
+    hyphen (U+2011), so a compound word (heart-rate-dependent, non-invasive, ...)
+    can never be split across a PowerPoint line-wrap."""
+    return re.sub(r"(?<=\w)-(?=\w)", "‑", text)
+
+
+def estimate_line_count(text, box_width_in, font_pt, indent_in=0.0):
+    plain = re.sub(r"\*\*|\*", "", text)
+    avg_char_w_in = font_pt * AVG_CHAR_WIDTH_FACTOR / 72
+    usable_w = max(0.5, box_width_in - indent_in)
+    chars_per_line = max(8, int(usable_w / avg_char_w_in))
+    return max(1, -(-len(plain) // chars_per_line))  # ceil division
+
+
+def estimate_block_height_in(bullets, box_width_in, font_pt, space_after_pt=12, indent_in=0.0):
+    line_h_in = font_pt * 1.22 / 72
+    total = 0.0
+    for b in bullets:
+        n_lines = estimate_line_count(b, box_width_in, font_pt, indent_in)
+        total += n_lines * line_h_in + space_after_pt / 72
+    return total
+
+
+def centered_top(block_h_in, top_min, bottom_max, max_fraction=0.4):
+    avail = bottom_max - top_min
+    offset = max(0.0, (avail - block_h_in) / 2)
+    offset = min(offset, avail * max_fraction)
+    return top_min + offset
+
+
+def set_hanging_indent(paragraph, indent_in=BULLET_INDENT_IN):
+    pPr = paragraph._p.get_or_add_pPr()
+    marL = int(indent_in * 914400)
+    pPr.set("marL", str(marL))
+    pPr.set("indent", str(-marL))
+
+
+# ---------------------------------------------------------------------------
 # Outline parsing
 # ---------------------------------------------------------------------------
 def parse_outline(md_path):
@@ -97,9 +145,12 @@ def parse_outline(md_path):
         image_paths = re.findall(r"`(results/[^`]+)`", image_line)
         crop = None
         if "right half" in image_line.lower():
-            crop = ("left", 0.5)
-        elif "s1 column only" in image_line.lower():
-            crop = ("right", 0.73)
+            # The source figure has a full-width suptitle shared by both panels; a
+            # plain left=0.5 crop slices that title in half too. crop_top removes
+            # the truncated suptitle band (measured via PIL: the right panel's own
+            # content starts at 8.5% of the image height) while leaving the panel's
+            # own subtitle untouched.
+            crop = {"left": 0.5, "top": 0.06}
 
         slides.append(
             {
@@ -126,15 +177,15 @@ def add_markdown_runs(paragraph, text, size=18, color=SLATE, bold_color=None, fo
             continue
         run = paragraph.add_run()
         if tok.startswith("**") and tok.endswith("**"):
-            run.text = tok[2:-2]
+            run.text = nbhyphen(tok[2:-2])
             run.font.bold = True
             run.font.color.rgb = bold_color
         elif tok.startswith("*") and tok.endswith("*"):
-            run.text = tok[1:-1]
+            run.text = nbhyphen(tok[1:-1])
             run.font.italic = True
             run.font.color.rgb = color
         else:
-            run.text = tok
+            run.text = nbhyphen(tok)
             run.font.color.rgb = color
         run.font.size = Pt(size)
         run.font.name = font
@@ -177,7 +228,7 @@ def add_title(slide, title_text, accent=SLATE):
     tf.word_wrap = True
     p = tf.paragraphs[0]
     run = p.add_run()
-    run.text = title_text
+    run.text = nbhyphen(title_text)
     run.font.size = Pt(28)
     run.font.bold = True
     run.font.name = FONT
@@ -202,9 +253,10 @@ def add_footer(slide, page_num):
         Inches(MARGIN_IN), Inches(FOOTER_TOP_IN), Inches(CONTENT_W_IN - 0.6), Inches(0.35)
     )
     tf = tb.text_frame
+    tf.word_wrap = True
     p = tf.paragraphs[0]
     run = p.add_run()
-    run.text = DECK_SHORT_TITLE
+    run.text = nbhyphen(DECK_SHORT_TITLE)
     run.font.size = Pt(9)
     run.font.name = FONT
     run.font.color.rgb = TEXT_GRAY
@@ -231,11 +283,9 @@ def image_native_ratio(path, crop=None):
         w, h = im.size
     ratio = w / h
     if crop:
-        side, frac = crop
-        if side in ("left", "right"):
-            ratio *= (1 - frac)
-        else:
-            ratio /= (1 - frac)
+        lr = crop.get("left", 0.0) + crop.get("right", 0.0)
+        tb = crop.get("top", 0.0) + crop.get("bottom", 0.0)
+        ratio *= (1 - lr) / (1 - tb)
     return ratio
 
 
@@ -269,8 +319,8 @@ def place_image(slide, path, box_left, box_top, box_w, box_h, crop=None, caption
         str(path), Inches(left), Inches(top), width=Inches(disp_w), height=Inches(disp_h)
     )
     if crop:
-        side, frac = crop
-        setattr(pic, f"crop_{side}", frac)
+        for side, frac in crop.items():
+            setattr(pic, f"crop_{side}", frac)
 
     cap_top = top + disp_h + frame_pad + 0.04
     if caption:
@@ -299,6 +349,7 @@ def add_bullets(slide, left, top, width, height, bullets, size=18, color=SLATE, 
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.space_after = Pt(12)
         p.level = 0
+        set_hanging_indent(p, BULLET_INDENT_IN)
         bullet_run = p.add_run()
         bullet_run.text = "▪  "  # small square bullet, teal
         bullet_run.font.size = Pt(size)
@@ -329,27 +380,37 @@ def build_title_slide(prs, s):
     author = bullets[2] if len(bullets) > 2 else ""
     course = bullets[3] if len(bullets) > 3 else ""
 
-    tb = slide.shapes.add_textbox(Inches(1.0), Inches(2.3), Inches(11.3), Inches(1.8))
+    title_box_w = 11.3
+    title_top = 2.3
+    tb = slide.shapes.add_textbox(Inches(1.0), Inches(title_top), Inches(title_box_w), Inches(1.8))
     tf = tb.text_frame
     tf.word_wrap = True
     p = tf.paragraphs[0]
     r = p.add_run()
-    r.text = main_title
+    r.text = nbhyphen(main_title)
     r.font.size = Pt(40)
     r.font.bold = True
     r.font.name = FONT
     r.font.color.rgb = SLATE
 
-    rule = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1.05), Inches(3.55), Inches(1.6), Pt(4))
+    # Rule/subtitle position must clear however many lines the title actually
+    # wraps to -- a fixed offset here previously struck through a 2-line title.
+    title_lines = estimate_line_count(main_title, title_box_w, 40)
+    title_line_h = 40 * 1.15 / 72
+    rule_top = title_top + title_lines * title_line_h + 0.15
+    subtitle_top = rule_top + 0.2
+
+    rule = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1.05), Inches(rule_top), Inches(1.6), Pt(4))
     rule.fill.solid()
     rule.fill.fore_color.rgb = TEAL
     rule.line.fill.background()
     rule.shadow.inherit = False
 
-    tb2 = slide.shapes.add_textbox(Inches(1.0), Inches(3.75), Inches(11.3), Inches(0.7))
+    tb2 = slide.shapes.add_textbox(Inches(1.0), Inches(subtitle_top), Inches(11.3), Inches(0.7))
+    tb2.text_frame.word_wrap = True
     p2 = tb2.text_frame.paragraphs[0]
     r2 = p2.add_run()
-    r2.text = subtitle
+    r2.text = nbhyphen(subtitle)
     r2.font.size = Pt(19)
     r2.font.name = FONT
     r2.font.color.rgb = TEXT_GRAY
@@ -357,16 +418,17 @@ def build_title_slide(prs, s):
 
     tb3 = slide.shapes.add_textbox(Inches(1.0), Inches(6.15), Inches(11.3), Inches(1.0))
     tf3 = tb3.text_frame
+    tf3.word_wrap = True
     p3 = tf3.paragraphs[0]
     r3 = p3.add_run()
-    r3.text = author
+    r3.text = nbhyphen(author)
     r3.font.size = Pt(15)
     r3.font.bold = True
     r3.font.name = FONT
     r3.font.color.rgb = SLATE
     p4 = tf3.add_paragraph()
     r4 = p4.add_run()
-    r4.text = course
+    r4.text = nbhyphen(course)
     r4.font.size = Pt(13)
     r4.font.name = FONT
     r4.font.color.rgb = TEXT_GRAY
@@ -412,7 +474,9 @@ def build_text_only_slide(prs, s, page_num):
     slide = add_blank_slide(prs)
     add_background(slide)
     add_title(slide, s["title"])
-    add_bullets(slide, MARGIN_IN, CONTENT_TOP_IN + 0.3, CONTENT_W_IN, CONTENT_H_IN - 0.3, s["bullets"], size=20)
+    block_h = estimate_block_height_in(s["bullets"], CONTENT_W_IN, 20, indent_in=BULLET_INDENT_IN)
+    top = centered_top(block_h, CONTENT_TOP_IN + 0.3, CONTENT_BOTTOM_IN)
+    add_bullets(slide, MARGIN_IN, top, CONTENT_W_IN, CONTENT_BOTTOM_IN - top, s["bullets"], size=20)
     add_footer(slide, page_num)
     set_notes(slide, s["notes"])
     return slide
@@ -450,17 +514,21 @@ def build_image_bullets_slide(prs, s, page_num):
         add_bullets(slide, MARGIN_IN, CONTENT_TOP_IN, CONTENT_W_IN, bullet_h, bullets, size=17)
         img_top = CONTENT_TOP_IN + bullet_h + 0.1
         img_h = CONTENT_BOTTOM_IN - img_top - 0.35
-        place_image(
-            slide, primary, MARGIN_IN, img_top, CONTENT_W_IN, img_h,
-            crop=s["crop"], caption=caption_from_title(s["title"]),
-        )
         if secondary:
-            inset_w = 2.6
-            inset_h = inset_w / image_native_ratio(secondary)
+            # Non-overlapping side-by-side split: the backup image gets its own
+            # reserved strip, carved out before the primary is sized, so the two
+            # can never collide regardless of aspect ratio.
+            gap, sec_w = 0.3, 2.9
+            prim_w = CONTENT_W_IN - sec_w - gap
             place_image(
-                slide, secondary,
-                SLIDE_W_IN - MARGIN_IN - inset_w - 0.1, CONTENT_TOP_IN + 0.05,
-                inset_w, inset_h,
+                slide, primary, MARGIN_IN, img_top, prim_w, img_h,
+                crop=s["crop"], caption=caption_from_title(s["title"]),
+            )
+            place_image(slide, secondary, MARGIN_IN + prim_w + gap, img_top, sec_w, img_h)
+        else:
+            place_image(
+                slide, primary, MARGIN_IN, img_top, CONTENT_W_IN, img_h,
+                crop=s["crop"], caption=caption_from_title(s["title"]),
             )
     else:
         bullet_w = CONTENT_W_IN * 0.38
@@ -470,17 +538,18 @@ def build_image_bullets_slide(prs, s, page_num):
         )
         img_left = MARGIN_IN + bullet_w + 0.35
         img_h = CONTENT_H_IN - 0.35
-        place_image(
-            slide, primary, img_left, CONTENT_TOP_IN, img_w, img_h,
-            crop=s["crop"], caption=caption_from_title(s["title"]),
-        )
         if secondary:
-            inset_w = min(2.4, img_w * 0.4)
-            inset_h = inset_w / image_native_ratio(secondary)
+            gap, sec_w = 0.25, 2.5
+            prim_w = img_w - sec_w - gap
             place_image(
-                slide, secondary,
-                img_left + img_w - inset_w - 0.05, CONTENT_TOP_IN + 0.05,
-                inset_w, inset_h,
+                slide, primary, img_left, CONTENT_TOP_IN, prim_w, img_h,
+                crop=s["crop"], caption=caption_from_title(s["title"]),
+            )
+            place_image(slide, secondary, img_left + prim_w + gap, CONTENT_TOP_IN, sec_w, img_h)
+        else:
+            place_image(
+                slide, primary, img_left, CONTENT_TOP_IN, img_w, img_h,
+                crop=s["crop"], caption=caption_from_title(s["title"]),
             )
 
     add_footer(slide, page_num)
@@ -504,7 +573,7 @@ def _box(slide, left, top, w, h, text, fill, text_color=WHITE, size=13, bold=Tru
     p = tf.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     r = p.add_run()
-    r.text = text
+    r.text = nbhyphen(text)
     r.font.size = Pt(size)
     r.font.bold = bold
     r.font.name = FONT
@@ -534,14 +603,13 @@ def _pill(slide, cx, cy, w, h, text, outline_color):
     return shp
 
 
-def _arrow(slide, x1, y, x2, color=TEXT_GRAY):
+def _connector_line(slide, x1, y, x2, color=TEXT_GRAY):
+    # Plain connecting line, no arrowhead: it's sent behind the pills/boxes as a
+    # background connector (flow direction is already obvious from box order),
+    # and a decorated tail-end would poke out past the last shape's edge there.
     conn = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(x1), Inches(y), Inches(x2), Inches(y))
     conn.line.color.rgb = color
     conn.line.width = Pt(1.5)
-    line = conn.line._get_or_add_ln()
-    from pptx.oxml.ns import qn
-    tail = line.makeelement(qn("a:tailEnd"), {"type": "triangle", "w": "med", "len": "med"})
-    line.append(tail)
     return conn
 
 
@@ -550,45 +618,40 @@ def build_diagram_slide_paradigms(prs, s, page_num):
     add_background(slide)
     add_title(slide, s["title"])
 
-    box_w, box_h = 5.6, 3.0
-    top = CONTENT_TOP_IN + 0.5
-    left1 = MARGIN_IN + 0.4
-    left2 = SLIDE_W_IN - MARGIN_IN - 0.4 - box_w
+    box_w, box_h = 4.9, 3.0
+    block_h = box_h + 0.35 + 0.4  # boxes + gap-to-thesis + thesis line
+    top = centered_top(block_h, CONTENT_TOP_IN, CONTENT_BOTTOM_IN)
+    left1 = MARGIN_IN
+    left2 = SLIDE_W_IN - MARGIN_IN - box_w
 
     b1 = _box(slide, left1, top, box_w, 0.6, "Blind (ICA / BSS)", TEAL, size=20)
     b2 = _box(slide, left2, top, box_w, 0.6, "Non-blind (Sequential Analysis)", SLATE, size=20)
 
-    detail1 = slide.shapes.add_textbox(Inches(left1 + 0.25), Inches(top + 0.85), Inches(box_w - 0.5), Inches(box_h - 0.9))
-    tf1 = detail1.text_frame
-    tf1.word_wrap = True
-    for i, line in enumerate([
+    def _detail_list(left, lines):
+        box = slide.shapes.add_textbox(Inches(left + 0.25), Inches(top + 0.85), Inches(box_w - 0.5), Inches(box_h - 0.9))
+        tf = box.text_frame
+        tf.word_wrap = True
+        for i, line in enumerate(lines):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.space_after = Pt(10)
+            set_hanging_indent(p, 0.22)
+            r = p.add_run()
+            r.text = "▪  " + nbhyphen(line)
+            r.font.size = Pt(15)
+            r.font.name = FONT
+            r.font.color.rgb = SLATE
+        return box
+
+    _detail_list(left1, [
         "No prior knowledge assumed",
         "Relies purely on statistical independence of sources",
         "As many independent sources as channels required",
-    ]):
-        p = tf1.paragraphs[0] if i == 0 else tf1.add_paragraph()
-        p.space_after = Pt(10)
-        r = p.add_run()
-        r.text = "▪  " + line
-        r.font.size = Pt(15)
-        r.font.name = FONT
-        r.font.color.rgb = SLATE
-
-    detail2 = slide.shapes.add_textbox(Inches(left2 + 0.25), Inches(top + 0.85), Inches(box_w - 0.5), Inches(box_h - 0.9))
-    tf2 = detail2.text_frame
-    tf2.word_wrap = True
-    for i, line in enumerate([
+    ])
+    _detail_list(left2, [
         "Exploits a priori knowledge of each interferer",
         "Uses periodicity, morphology, frequency content",
         "Paper's thesis: more robust, especially at low SNR",
-    ]):
-        p = tf2.paragraphs[0] if i == 0 else tf2.add_paragraph()
-        p.space_after = Pt(10)
-        r = p.add_run()
-        r.text = "▪  " + line
-        r.font.size = Pt(15)
-        r.font.name = FONT
-        r.font.color.rgb = SLATE
+    ])
 
     for shp in (b1, b2):
         shp2 = slide.shapes.add_shape(
@@ -638,7 +701,8 @@ def build_diagram_slide_pipeline(prs, s, page_num):
     ]
 
     n_boxes = len(processes)
-    row_y = CONTENT_TOP_IN + 1.4
+    block_h = 0.42 + 0.7 + 1.3 + 0.6  # sub-caption + box row + gap-to-note + note line
+    row_y = centered_top(block_h, CONTENT_TOP_IN, CONTENT_BOTTOM_IN) + 0.42
     total_w = CONTENT_W_IN
     box_w = 1.85
     pill_w = 0.65
@@ -659,7 +723,7 @@ def build_diagram_slide_pipeline(prs, s, page_num):
             sp = sub_box.text_frame.paragraphs[0]
             sp.alignment = PP_ALIGN.CENTER
             r = sp.add_run()
-            r.text = sub
+            r.text = nbhyphen(sub)
             r.font.size = Pt(10)
             r.font.italic = True
             r.font.name = FONT
@@ -670,8 +734,12 @@ def build_diagram_slide_pipeline(prs, s, page_num):
     _pill(slide, last_pill_cx, row_y + 0.35, pill_w + 0.35, 0.5, "S6\n+FHR", RED)
     centers.append(last_pill_cx)
 
-    # arrows connecting consecutive nodes along the row (drawn as thin lines under the shapes)
-    _arrow(slide, MARGIN_IN, row_y + 0.35, x + pill_w + 0.35, color=LIGHT_GRAY)
+    # Connecting line, sent behind the pills/boxes (z-order) so it only shows in
+    # the gaps between them instead of visibly crossing through the solid shapes.
+    line = _connector_line(slide, MARGIN_IN, row_y + 0.35, x + pill_w + 0.35, color=LIGHT_GRAY)
+    spTree = slide.shapes._spTree
+    spTree.remove(line._element)
+    spTree.insert(3, line._element)
 
     note = s["bullets"][-1] if s["bullets"] else ""
     note_box = slide.shapes.add_textbox(Inches(MARGIN_IN), Inches(row_y + 1.3), Inches(CONTENT_W_IN), Inches(0.6))
@@ -693,7 +761,7 @@ NATIVE_DIAGRAM_BUILDERS = {
     4: build_diagram_slide_paradigms,
     5: build_diagram_slide_pipeline,
 }
-TEXT_ONLY_NUMS = {2, 18, 19, 20}
+TEXT_ONLY_NUMS = {2, 3, 18, 19, 20}
 EQUATIONS_NUM = 12
 
 
